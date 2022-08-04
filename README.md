@@ -7,4 +7,3 @@ Dim is a statically-typed language.
 ```
 make dim
 ```
- 

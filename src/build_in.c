@@ -9,3 +9,8 @@ EXPORT void print(const char* format, ...) {
     vfprintf(stdout, format, args);
     va_end(args);
 }
+
+EXPORT char inputc() {
+    char result = getchar();
+    return result;
+}

@@ -53,12 +53,8 @@ static inline void exit_scope() {
     scope--;
 }
 
-static inline codegen_symbol_scope get_current_scope() {
-    switch (scope) {
-        case 0:  return GLOBAL_SCOPE;
-        case 1:  return FUNC_PARAM_SCOPE;
-        default: return BLOCK_SCOPE;
-    }
+static inline int32_t get_current_scope() {
+    return scope;
 }
 
 static inline void push_new_block(codegen* code) {
@@ -131,12 +127,25 @@ static void append_build_in_function(codegen* code,
 }
 
 static void create_build_in_functions(codegen* code) {
-    LLVMTypeRef print_param_types[] = { code->types_to_llvm[STR_VAR] };
-    LLVMTypeRef print_type          = LLVMFunctionType(LLVMVoidTypeInContext(code->context),
+    // print
+    {
+        LLVMTypeRef print_param_types[] = { code->types_to_llvm[STR_VAR] };
+        LLVMTypeRef print_type          = LLVMFunctionType(LLVMVoidTypeInContext(code->context),
                                                        print_param_types, 1, 1);
-    LLVMValueRef print_function     = LLVMAddFunction(code->module, "print", print_type);
+        LLVMValueRef print_function     = LLVMAddFunction(code->module, "print", print_type);
 
-    append_build_in_function(code, 0, print_function, print_type, "print", print);
+        append_build_in_function(code, 0, print_function, print_type, "print", print);
+    }
+
+    // inputc
+    {
+        LLVMTypeRef inputc_param_types[] = {};
+        LLVMTypeRef inputc_type          = LLVMFunctionType(LLVMInt8TypeInContext(code->context),
+                                                        inputc_param_types, 0, 0);
+        LLVMValueRef inputc_function     = LLVMAddFunction(code->module, "inputc", inputc_type);
+
+        append_build_in_function(code, 1, inputc_function, inputc_type, "inputc", inputc);
+    }
 }
 
 codegen codegen_create(arena* mem, const char* module_name) {

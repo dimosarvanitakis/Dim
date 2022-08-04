@@ -25,10 +25,10 @@ typedef enum codegen_symbol_scope {
 } codegen_symbol_scope;
 
 struct codegen_symbol {
-    codegen_symbol_scope scope;
-    bool                 is_function;
-    LLVMValueRef         value;
-    LLVMTypeRef          type;
+    int32_t      scope;
+    bool         is_function;
+    LLVMValueRef value;
+    LLVMTypeRef  type;
 };
 
 struct codegen {
