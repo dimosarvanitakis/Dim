@@ -1,0 +1,35 @@
+var dimos: i8 = 10;
+var nikos: i32 = 90;
+
+var tassos: i64 = dimos + nikos + 29823;
+
+fn dl(x1:i8): i8 {
+   return x1;
+}
+
+fn nm(x2: i64) {
+   x2 = x2 + 4;
+}
+
+fn main(x: i8, y: i8): i32 {
+   dimos = 98;
+
+   dl(4);
+
+   nikos = x + y;
+
+   if (x < y) {
+      print("Y is greater than X.\n");
+   } else {
+      print("X is greater than Y.\n");
+   }
+
+   while (x < 5) {
+      print("I am here!\n");
+      x = x + 1;
+   }
+
+   dimos = 5 + 6;
+
+   return dimos;
+}
