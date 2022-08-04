@@ -835,7 +835,7 @@ LLVMValueRef codegen_generate_var_definition_stmt(codegen* code, stmt* ast_node)
     const char* var_name = ast_var_def->name.data;
     location*   var_loc  = &ast_var_def->loc;
 
-    codegen_symbol_scope current_scope = get_current_scope();
+    int32_t current_scope = get_current_scope();
     if (symbol_table_contains(&code->symbols, var_name, check_for_var_in_scope, (void*) &current_scope) == SYM_SUCCESS) {
         return codegen_report_error(code,
                                     var_loc,

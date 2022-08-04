@@ -18,12 +18,6 @@ struct build_in_function {
     void*         address;
 };
 
-typedef enum codegen_symbol_scope {
-    GLOBAL_SCOPE     = 0,
-    FUNC_PARAM_SCOPE = 1,
-    BLOCK_SCOPE,
-} codegen_symbol_scope;
-
 struct codegen_symbol {
     int32_t      scope;
     bool         is_function;
