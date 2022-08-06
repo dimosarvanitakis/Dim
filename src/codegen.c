@@ -1,5 +1,7 @@
 #include "codegen.h"
 
+#include <llvm-c/Core.h>
+
 #define UNWRAP(type, object) (type) *((type*) object)
 
 typedef LLVMValueRef codegen_stmt_function(codegen* code, stmt* ast_node);
@@ -275,7 +277,8 @@ LLVMValueRef codegen_generate_func_call_expr(codegen* code, expr* ast_node) {
 
     LLVMValueRef callee_func = LLVMGetNamedFunction(code->module, ast_func_call->name.data);
     if (!callee_func) {
-        return codegen_report_error(code, &ast_func_call->loc,
+        return codegen_report_error(code,
+                                    &ast_func_call->loc,
                                     "trying to call an unknown function with name `%s`.",
                                     ast_func_call->name.data);
     }
@@ -283,7 +286,8 @@ LLVMValueRef codegen_generate_func_call_expr(codegen* code, expr* ast_node) {
     uint32_t callee_parama_size = LLVMCountParams(callee_func);
     uint32_t caller_pass_args   = ast_func_call->arguments.length;
     if (callee_parama_size != caller_pass_args) {
-        return codegen_report_error(code, &ast_func_call->loc,
+        return codegen_report_error(code,
+                                    &ast_func_call->loc,
                                     "trying to call function `%s` with less parameters (expected %u and got %u)",
                                     ast_func_call->name.data,
                                     callee_parama_size,
@@ -348,13 +352,17 @@ static LLVMValueRef codegen_generate_binary_compare(codegen* code, binary_op_exp
     if (lhs_kind != LLVMFloatTypeKind  &&
         lhs_kind != LLVMDoubleTypeKind &&
         lhs_kind != LLVMIntegerTypeKind) {
-        return codegen_report_error(code, &ast_binary_op->loc, "left hand side of compare expression is not a number.");
+        return codegen_report_error(code,
+                                    &ast_binary_op->loc,
+                                    "left hand side of compare expression is not a number.");
     }
 
     if (rhs_kind != LLVMFloatTypeKind  &&
         rhs_kind != LLVMDoubleTypeKind &&
         rhs_kind != LLVMIntegerTypeKind) {
-        return codegen_report_error(code, &ast_binary_op->loc, "right hand side of compare expression is not a number.");
+        return codegen_report_error(code,
+                                    &ast_binary_op->loc,
+                                    "right hand side of compare expression is not a number.");
     }
 
     LLVMIntPredicate int_binary_op;
@@ -412,7 +420,8 @@ static LLVMValueRef codegen_generate_binary_compare(codegen* code, binary_op_exp
         } break;
 
         default: {
-            return codegen_report_error(code, &ast_binary_op->loc,
+            return codegen_report_error(code,
+                                        &ast_binary_op->loc,
                                         "unknown comparison operator `%s`.\n",
                                         binary_op_to_str_table[ast_binary_op->type]);
         } break;
@@ -425,14 +434,87 @@ static LLVMValueRef codegen_generate_binary_compare(codegen* code, binary_op_exp
     }
 }
 
-static LLVMValueRef codegen_generate_binary_arithetic(codegen* code, binary_op_expr* ast_binary_op, LLVMValueRef lhs, LLVMValueRef rhs) {
-    LLVMTypeKind kind = LLVMGetTypeKind(LLVMTypeOf(rhs));
-    bool is_real      = (kind == LLVMFloatTypeKind ||
-                         kind == LLVMDoubleTypeKind) ? 1 : 0;
+static inline bool is_floating_point_type(LLVMTypeKind kind) {
+    return (kind == LLVMDoubleTypeKind ||
+            kind == LLVMFloatTypeKind  ||
+            kind == LLVMBFloatTypeKind);
+}
 
+static inline bool is_integer_type(LLVMTypeKind kind) {
+    return (kind == LLVMIntegerTypeKind);
+}
+
+static inline uint32_t get_type_size_in_bits(LLVMTypeKind kind, LLVMTypeRef type) {
+    switch(kind) {
+        case LLVMFloatTypeKind:   return 32;
+        case LLVMDoubleTypeKind:  return 64;
+        case LLVMIntegerTypeKind: return LLVMGetIntTypeWidth(type);
+
+        default: {
+            return 0;
+        } break;
+    }
+}
+
+static LLVMValueRef codegen_generate_binary_arithetic(codegen* code, binary_op_expr* ast_binary_op, LLVMValueRef lhs, LLVMValueRef rhs) {
+    LLVMTypeKind lhs_kind = LLVMGetTypeKind(LLVMTypeOf(lhs));
+    LLVMTypeKind rhs_kind = LLVMGetTypeKind(LLVMTypeOf(rhs));
+
+    bool lhs_is_float = is_floating_point_type(lhs_kind);
+    bool rhs_is_float = is_floating_point_type(rhs_kind);
+    bool lhs_is_integ = is_integer_type(lhs_kind);
+    bool rhs_is_integ = is_integer_type(rhs_kind);
+
+    uint32_t lhs_bits = get_type_size_in_bits(lhs_kind, LLVMTypeOf(lhs));
+    uint32_t rhs_bits = get_type_size_in_bits(rhs_kind, LLVMTypeOf(rhs));
+
+    if ((lhs_is_float && rhs_is_integ) ||
+        (lhs_is_integ && rhs_is_float))
+    {
+        LLVMTypeRef double_type = LLVMDoubleTypeInContext(code->context);
+        LLVMOpcode cast_op      = LLVMBitCast;
+
+        {
+            if (lhs_is_integ) {
+                cast_op = LLVMSIToFP;
+            } else {
+                if (get_type_size_in_bits(lhs_kind, LLVMTypeOf(lhs)) < 64) {
+                    cast_op = LLVMFPExt;
+                }
+            }
+            lhs = LLVMBuildCast(code->ir_builder, cast_op, lhs, double_type, "lhs_cast");
+        }
+
+        {
+            if (rhs_is_integ) {
+                cast_op = LLVMSIToFP;
+            } else {
+                if (get_type_size_in_bits(rhs_kind, LLVMTypeOf(rhs)) < 64) {
+                    cast_op = LLVMFPExt;
+                }
+            }
+            rhs  = LLVMBuildCast(code->ir_builder, cast_op, rhs, double_type, "rhs_cast");
+        }
+
+    } else if (lhs_is_integ && rhs_is_integ) {
+        if (lhs_bits > rhs_bits) {
+            rhs = LLVMBuildCast(code->ir_builder, LLVMSExt, rhs, LLVMTypeOf(lhs), "rhs_cast");
+        } else if (lhs_bits < rhs_bits) {
+            rhs = LLVMBuildCast(code->ir_builder, LLVMSExt, lhs, LLVMTypeOf(rhs), "lhs_cast");
+        }
+    } else if (lhs_is_float && rhs_is_float) {
+        if (lhs_bits > rhs_bits) {
+            rhs = LLVMBuildCast(code->ir_builder, LLVMFPExt, rhs, LLVMTypeOf(lhs), "rhs_cast");
+        } else if (lhs_bits < rhs_bits) {
+            rhs = LLVMBuildCast(code->ir_builder, LLVMFPExt, lhs, LLVMTypeOf(rhs), "lhs_cast");
+        }
+    }
+
+    bool is_real = is_floating_point_type(LLVMGetTypeKind(LLVMTypeOf(rhs)));
     if ((ast_binary_op->type == OR_BINARY_OP ||
          ast_binary_op->type == AND_BINARY_OP) && is_real) {
-        return codegen_report_error(code, &ast_binary_op->loc,
+        return codegen_report_error(code,
+                                    &ast_binary_op->loc,
                                     "the binary operators '||' and '&&' does not support floating point arithetic.\n");
     }
 
@@ -467,7 +549,8 @@ static LLVMValueRef codegen_generate_binary_arithetic(codegen* code, binary_op_e
 
         // Handle the rest of the cases as error
         default: {
-            return codegen_report_error(code, &ast_binary_op->loc,
+            return codegen_report_error(code,
+                                        &ast_binary_op->loc,
                                         "unknown arithetic operator `%s`.\n",
                                         binary_op_to_str_table[ast_binary_op->type]);
         } break;
@@ -726,7 +809,8 @@ LLVMValueRef codegen_generate_block_stmt(codegen* code, stmt* ast_node) {
     {
         for (stmts_it = ast_block->stmts.front;
              stmts_it != NULL;
-             stmts_it = stmts_it->next) {
+             stmts_it = stmts_it->next)
+        {
             // Dispatch
             stmt* ast_stmt = (stmt*) stmts_it->data;
 
@@ -739,18 +823,6 @@ LLVMValueRef codegen_generate_block_stmt(codegen* code, stmt* ast_node) {
     exit_scope();
 
     return last_stmt;
-}
-
-static uint32_t get_type_size_in_bits(LLVMTypeKind kind, LLVMTypeRef type) {
-    switch(kind) {
-        case LLVMFloatTypeKind:   return 32;
-        case LLVMDoubleTypeKind:  return 64;
-        case LLVMIntegerTypeKind: return LLVMGetIntTypeWidth(type);
-
-        default: {
-            return 0;
-        } break;
-    }
 }
 
 LLVMValueRef codegen_generate_var_assign_stmt(codegen* code, stmt* ast_node) {
@@ -794,7 +866,7 @@ LLVMValueRef codegen_generate_var_assign_stmt(codegen* code, stmt* ast_node) {
         uint32_t var_size = get_type_size_in_bits(var_kind, var_type);
 
         if (rhs_size < var_size) {
-            rhs_value = LLVMBuildZExtOrBitCast(code->ir_builder, rhs_value, var_type, "cast");
+            rhs_value = LLVMBuildSExtOrBitCast(code->ir_builder, rhs_value, var_type, "cast");
         } else if (rhs_size > var_size) {
             rhs_value = LLVMBuildTruncOrBitCast(code->ir_builder, rhs_value, var_type, "cast");
         }
@@ -820,6 +892,10 @@ static bool check_for_var_in_scope(void* symbol, void* extra) {
     }
 
     return false;
+}
+
+static inline bool is_var_unsigned(var_type type) {
+    return (type >= U8_VAR && type <= U64_VAR);
 }
 
 LLVMValueRef codegen_generate_var_definition_stmt(codegen* code, stmt* ast_node) {
@@ -879,7 +955,6 @@ LLVMValueRef codegen_generate_var_definition_stmt(codegen* code, stmt* ast_node)
     fprintf(stdout, "\n");
 #endif
 
-    // Assign
     if (ast_var_def->is_initialized) {
         stmt ast_assign_stmt;
         ast_assign_stmt.type = VAR_ASSIGN_STMT;
@@ -889,7 +964,6 @@ LLVMValueRef codegen_generate_var_definition_stmt(codegen* code, stmt* ast_node)
         ast_assign.loc   = ast_var_def->loc;
         ast_assign.value = ast_var_def->rhs;
 
-        // Wrap it as stmt
         ast_assign_stmt.as.var_assi = ast_assign;
 
         codegen_generate_var_assign_stmt(code, &ast_assign_stmt);
@@ -995,7 +1069,7 @@ LLVMValueRef codegen_generate_func_decl(codegen* code, func_decl* ast_func) {
                 LLVMValueRef param_value = codegen_generate_var_definition_stmt(code, &ast_var_def_stmt);
                 if (param_value) {
                     LLVMSetValueName2(param_it, param->name.data, param->name.length);
-                    LLVMBuildStore(code->ir_builder, param_value, param_it);
+                    LLVMBuildStore(code->ir_builder, param_it, param_value);
                 }
 
                 param_it = LLVMGetNextParam(param_it);
@@ -1008,7 +1082,19 @@ LLVMValueRef codegen_generate_func_decl(codegen* code, func_decl* ast_func) {
         ast_block.type = BLOCK_STMT;
         memcpy(&ast_block.as.block, &ast_func->body, sizeof(block_stmt));
 
-        codegen_generate_block_stmt(code, &ast_block);
+        LLVMValueRef body_value = codegen_generate_block_stmt(code, &ast_block);
+
+        // if no return has been generated yet...
+        if (!LLVMGetBasicBlockTerminator(get_current_block(code))) {
+
+            // AND the return type is void generate a return void instruction.
+            if (ast_func->return_type == VOID_VAR) {
+                LLVMBuildRetVoid(code->ir_builder);
+            // else create a return instruction depending on the return value of the body.
+            } else if (LLVMGetTypeKind(LLVMTypeOf(body_value)) != LLVMVoidTypeKind) {
+                LLVMBuildRet(code->ir_builder, body_value);
+            }
+        }
     }
     pop_block(code);
 

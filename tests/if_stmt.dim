@@ -7,7 +7,7 @@ fn dl(x1:i8): i8 {
    return x1;
 }
 
-fn nm(x2: i64) {
+fn nm(x2: f64) {
    x2 = x2 + 4;
 }
 
