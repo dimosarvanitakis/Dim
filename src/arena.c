@@ -34,6 +34,16 @@ void region_tell_stats(region* reg) {
             (float)((float)(reg->capacity - reg->size) / (float)reg->capacity) * 100);
 }
 
+arena arena_create(const char *id) {
+  arena mem;
+
+  mem.id   = id;
+  mem.head = NULL;
+  mem.last = NULL;
+
+  return mem;
+}
+
 // TODO: Add alignment
 void* arena_allocate(arena* mem, int32_t size) {
     // first time using the memory mem. Allocate the first region.
@@ -118,7 +128,7 @@ void arena_free(arena* mem) {
 }
 
 void arena_inspect(arena* mem) {
-    fprintf(stdout, "Arena Stats:\n");
+    fprintf(stdout, "Arena Stats[%s]:\n", mem->id);
 
     for (region* reg = mem->head;
          reg != NULL;

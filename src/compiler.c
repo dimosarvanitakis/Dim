@@ -18,7 +18,7 @@ void print_help() {
 
 int main(int argc, char* argv[]) {
     char* file = NULL;
-    arena mem  = {0};
+    arena mem  = arena_create("lexer_parser_arena");
 
     if (argc <= 1) {
         print_help();
@@ -59,7 +59,7 @@ int main(int argc, char* argv[]) {
     module ast = {0};
     ast = parse(&mem, &lex);
 
-    codegen code = codegen_create(&mem, file);
+    codegen code = codegen_create(file);
 
     codegen_generate_module(&code, &ast);
 

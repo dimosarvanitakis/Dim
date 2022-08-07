@@ -5,19 +5,27 @@
 
 #define MAX_TOKEN_BUFFER 5
 
-typedef struct tok_buffer {
+typedef struct tok_buffer tok_buffer;
+typedef struct lexer      lexer;
+
+struct tok_buffer {
 	token*   tokens[MAX_TOKEN_BUFFER];
 	uint32_t pos;
-} tok_buffer;
+};
 
-typedef struct lexer {
+struct lexer {
 	const char*  file;
+
 	buffer       buff;
+
 	arena*       mem;
+
 	location     curr_pos;
+
 	uint32_t     position;
+
 	tok_buffer   token_buffer;
-} lexer;
+};
 
 lexer   lexer_create(arena* mem, const char* file);
 void    lexer_report_error(location* loc, const char* error, ...);

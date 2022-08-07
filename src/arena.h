@@ -28,6 +28,7 @@ struct region {
 };
 
 struct arena {
+  const char* id;
   region* head;
   region* last;
 };
@@ -37,6 +38,7 @@ void    region_clear(region* reg);
 void    region_free(region* reg);
 void    region_tell_stats(region* reg);
 
+arena  arena_create(const char* id);
 void*  arena_allocate(arena* mem, int32_t size);
 void   arena_clear(arena* mem);
 void   arena_free(arena* mem);

@@ -68,10 +68,10 @@ static inline void enter_loop_body(codegen* code) {
 
     // create a new patch "level"
     list new_scope_break = list_create(sizeof(bc_patch_info));
-    list_push_back(code->mem, &code->break_list, (void*) &new_scope_break);
+    list_push_back(&code->mem, &code->break_list, (void*) &new_scope_break);
 
     list new_scope_continue = list_create(sizeof(bc_patch_info));
-    list_push_back(code->mem, &code->continue_list, (void*) &new_scope_continue);
+    list_push_back(&code->mem, &code->continue_list, (void*) &new_scope_continue);
 }
 
 static inline void exit_loop_body(codegen* code) {
@@ -88,21 +88,21 @@ static inline bool is_break_continue_allowed() {
 
 static inline void push_bc_patch_info(codegen* code, list* to_be_patched, LLVMBasicBlockRef parent, LLVMValueRef instr) {
     bc_patch_info patch = {0};
-    patch.instr  = arena_allocate(code->mem, sizeof(LLVMValueRef));
+    patch.instr  = arena_allocate(&code->mem, sizeof(LLVMValueRef));
     memcpy(&patch.instr, &instr, sizeof(LLVMValueRef));
     patch.parent = &parent;
 
-    list_push_back(code->mem, to_be_patched, (void*) &patch);
+    list_push_back(&code->mem, to_be_patched, (void*) &patch);
 }
 
 static inline void push_new_block(codegen* code) {
     LLVMBasicBlockRef new_block = LLVMCreateBasicBlockInContext(code->context,
                                                                 "entry");
-    list_push_back(code->mem, &code->blocks, &new_block);
+    list_push_back(&code->mem, &code->blocks, &new_block);
 }
 
 static inline void push_existing_block(codegen* code, LLVMBasicBlockRef existing_block) {
-    list_push_back(code->mem, &code->blocks, &existing_block);
+    list_push_back(&code->mem, &code->blocks, &existing_block);
 }
 
 static inline void pop_block(codegen* code) {
@@ -135,17 +135,17 @@ static void append_build_in_function(codegen* code,
     code->build_in_functions[index].name     = func_name;
     code->build_in_functions[index].address  = func_address;
 
-    codegen_symbol* func_symbol = (codegen_symbol*) arena_allocate(code->mem, sizeof(codegen_symbol));
+    codegen_symbol* func_symbol = (codegen_symbol*) arena_allocate(&code->mem, sizeof(codegen_symbol));
     func_symbol->scope       = get_current_scope();
     func_symbol->is_function = true;
 
-    func_symbol->value = arena_allocate(code->mem, sizeof(LLVMValueRef));
+    func_symbol->value = arena_allocate(&code->mem, sizeof(LLVMValueRef));
     memcpy(&func_symbol->value, &func_value, sizeof(LLVMValueRef));
 
-    func_symbol->type  = arena_allocate(code->mem, sizeof(LLVMTypeRef));
+    func_symbol->type  = arena_allocate(&code->mem, sizeof(LLVMTypeRef));
     memcpy(&func_symbol->type, &func_type, sizeof(LLVMTypeRef));
 
-    if (symbol_table_put(code->mem, &code->symbols, func_name, (void*) func_symbol) != SYM_SUCCESS) {
+    if (symbol_table_put(&code->mem, &code->symbols, func_name, (void*) func_symbol) != SYM_SUCCESS) {
         fprintf(stderr, "Unable to create build in function '%s'.\n", func_name);
         exit(1);
     }
@@ -173,15 +173,15 @@ static void create_build_in_functions(codegen* code) {
     }
 }
 
-codegen codegen_create(arena* mem, const char* module_name) {
+codegen codegen_create(const char* module_name) {
     codegen code = {0};
 
     code.context    = LLVMContextCreate();
     code.module     = LLVMModuleCreateWithNameInContext(module_name, code.context);
     code.ir_builder = LLVMCreateBuilderInContext(code.context);
 
-    code.mem     = mem;
-    code.symbols = symbol_table_create(mem);
+    code.mem     = arena_create("codegen_arena");
+    code.symbols = symbol_table_create(&code.mem);
     code.blocks  = list_create(sizeof(LLVMBasicBlockRef*));
 
     code.break_list    = list_create(sizeof(list));
@@ -217,6 +217,9 @@ void codegen_clear(codegen* code) {
     LLVMDisposeModule(code->module);
     LLVMDisposeBuilder(code->ir_builder);
     LLVMContextDispose(code->context);
+
+    arena_inspect(&code->mem);
+    arena_free(&code->mem);
 }
 
 LLVMValueRef codegen_report_error(codegen* code, location* loc, const char* format, ...) {
@@ -642,7 +645,7 @@ LLVMValueRef codegen_generate_if_stmt(codegen* code, stmt* ast_node) {
     LLVMPositionBuilderAtEnd(code->ir_builder, get_current_block(code));
     LLVMBuildCondBr(code->ir_builder, cond_value, then_bb, else_bb);
 
-    bool is_merge_needed  = false;
+    bool is_merge_needed = false;
 
     push_existing_block(code, then_bb);
     {
@@ -1001,17 +1004,17 @@ LLVMValueRef codegen_generate_var_definition_stmt(codegen* code, stmt* ast_node)
     LLVMTypeRef  var_type  = code->types_to_llvm[ast_var_def->type];
     LLVMValueRef var_value = LLVMBuildAlloca(code->ir_builder, var_type, ast_var_def->name.data);
 
-    codegen_symbol* var_symbol = (codegen_symbol*) arena_allocate(code->mem, sizeof(codegen_symbol));
+    codegen_symbol* var_symbol = (codegen_symbol*) arena_allocate(&code->mem, sizeof(codegen_symbol));
     var_symbol->scope       = current_scope;
     var_symbol->is_function = false;
 
-    var_symbol->value = arena_allocate(code->mem, sizeof(LLVMValueRef));
+    var_symbol->value = arena_allocate(&code->mem, sizeof(LLVMValueRef));
     memcpy(&var_symbol->value, &var_value, sizeof(LLVMValueRef));
 
-    var_symbol->type  = arena_allocate(code->mem, sizeof(LLVMTypeRef));
+    var_symbol->type  = arena_allocate(&code->mem, sizeof(LLVMTypeRef));
     memcpy(&var_symbol->type, &var_type, sizeof(LLVMTypeRef));
 
-    if (symbol_table_put(code->mem, &code->symbols, var_name, (void*) var_symbol) != SYM_SUCCESS) {
+    if (symbol_table_put(&code->mem, &code->symbols, var_name, (void*) var_symbol) != SYM_SUCCESS) {
         return codegen_report_error(code,
                                     var_loc,
                                     "unable to create symbol '%s'.",
@@ -1094,17 +1097,17 @@ LLVMValueRef codegen_generate_func_decl(codegen* code, func_decl* ast_func) {
 
     LLVMBasicBlockRef body = LLVMAppendBasicBlockInContext(code->context, function_value, "entry");
 
-    codegen_symbol* func_symbol = (codegen_symbol*) arena_allocate(code->mem, sizeof(codegen_symbol));
+    codegen_symbol* func_symbol = (codegen_symbol*) arena_allocate(&code->mem, sizeof(codegen_symbol));
     func_symbol->scope       = get_current_scope();
     func_symbol->is_function = true;
 
-    func_symbol->value = arena_allocate(code->mem, sizeof(LLVMValueRef));
+    func_symbol->value = arena_allocate(&code->mem, sizeof(LLVMValueRef));
     memcpy(&func_symbol->value, &function_value, sizeof(LLVMValueRef));
 
-    func_symbol->type = arena_allocate(code->mem, sizeof(LLVMTypeRef));
+    func_symbol->type = arena_allocate(&code->mem, sizeof(LLVMTypeRef));
     memcpy(&func_symbol->type, &function_type, sizeof(LLVMTypeRef));
 
-    if (symbol_table_put(code->mem, &code->symbols, func_name, (void*) func_symbol) != SYM_SUCCESS) {
+    if (symbol_table_put(&code->mem, &code->symbols, func_name, (void*) func_symbol) != SYM_SUCCESS) {
         return codegen_report_error(code,
                                     func_loc,
                                     "unable to create symbol '%s'.",

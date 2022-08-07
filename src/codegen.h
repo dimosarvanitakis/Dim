@@ -39,8 +39,8 @@ struct codegen {
     // How many errors so far?
     int32_t errors;
 
-    // Allocator
-    arena* mem;
+    // codegen phase has it own memory arena
+    arena mem;
 
     // Symbol table
     symbol_table symbols;
@@ -57,7 +57,7 @@ struct codegen {
     LLVMTypeRef       types_to_llvm[VAR_TYPES_COUNT];
 };
 
-codegen      codegen_create(arena* mem, const char* module_name);
+codegen      codegen_create(const char* module_name);
 void         codegen_clear(codegen* code);
 LLVMValueRef codegen_report_error(codegen* code, location* loc, const char* format, ...);
 
