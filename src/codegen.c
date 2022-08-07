@@ -10,6 +10,10 @@ typedef LLVMValueRef codegen_expr_function(codegen* code, expr* ast_node);
 // 0 == Global Scope
 static int32_t scope = 0;
 
+// 0 == break/continue is out of a while/do loop and is
+// not allowed
+static int32_t bc_allowed = 0;
+
 //Dispatch table
 static codegen_stmt_function* const codegen_stmt_functions_table[STMT_TYPES_COUNT] = {
     codegen_generate_if_stmt,
@@ -59,6 +63,38 @@ static inline int32_t get_current_scope() {
     return scope;
 }
 
+static inline void enter_loop_body(codegen* code) {
+    bc_allowed++;
+
+    // create a new patch "level"
+    list new_scope_break = list_create(sizeof(bc_patch_info));
+    list_push_back(code->mem, &code->break_list, (void*) &new_scope_break);
+
+    list new_scope_continue = list_create(sizeof(bc_patch_info));
+    list_push_back(code->mem, &code->continue_list, (void*) &new_scope_continue);
+}
+
+static inline void exit_loop_body(codegen* code) {
+    bc_allowed--;
+
+    // we assume that the patch in the current loop already happened.
+    list_pop_back(&code->break_list);
+    list_pop_back(&code->continue_list);
+}
+
+static inline bool is_break_continue_allowed() {
+    return (bc_allowed > 0);
+}
+
+static inline void push_bc_patch_info(codegen* code, list* to_be_patched, LLVMBasicBlockRef parent, LLVMValueRef instr) {
+    bc_patch_info patch = {0};
+    patch.instr  = arena_allocate(code->mem, sizeof(LLVMValueRef));
+    memcpy(&patch.instr, &instr, sizeof(LLVMValueRef));
+    patch.parent = &parent;
+
+    list_push_back(code->mem, to_be_patched, (void*) &patch);
+}
+
 static inline void push_new_block(codegen* code) {
     LLVMBasicBlockRef new_block = LLVMCreateBasicBlockInContext(code->context,
                                                                 "entry");
@@ -77,19 +113,6 @@ static inline LLVMBasicBlockRef get_current_block(codegen* code) {
     list_it current_block = list_back(&code->blocks);
 
     return UNWRAP(LLVMBasicBlockRef, current_block->data);
-}
-
-static inline void create_main_block(codegen* code) {
-    // We need to create a global function for the builder to start
-    // generating ir in case we have global variables.
-    LLVMTypeRef main_params[]    = {};
-    LLVMTypeRef main_func_type   = LLVMFunctionType(LLVMVoidTypeInContext(code->context), main_params, 0, false);
-    LLVMValueRef main_func       = LLVMAddFunction(code->module, "global", main_func_type);
-    LLVMBasicBlockRef main_block = LLVMAppendBasicBlockInContext(code->context, main_func, "entry");
-
-    //LLVMPositionBuilderAtEnd(code->ir_builder, main_block);
-
-    push_existing_block(code, main_block);
 }
 
 static bool is_build_in_function(codegen* code, const char* name) {
@@ -161,6 +184,9 @@ codegen codegen_create(arena* mem, const char* module_name) {
     code.symbols = symbol_table_create(mem);
     code.blocks  = list_create(sizeof(LLVMBasicBlockRef*));
 
+    code.break_list    = list_create(sizeof(list));
+    code.continue_list = list_create(sizeof(list));
+
     code.errors  = 0;
 
     LLVMTypeRef types_to_llvm[VAR_TYPES_COUNT] = {
@@ -182,7 +208,6 @@ codegen codegen_create(arena* mem, const char* module_name) {
     };
     memcpy(code.types_to_llvm, types_to_llvm, VAR_TYPES_COUNT * sizeof(LLVMTypeRef));
 
-    create_main_block(&code);
     create_build_in_functions(&code);
 
     return code;
@@ -671,6 +696,21 @@ LLVMValueRef codegen_generate_if_stmt(codegen* code, stmt* ast_node) {
     return LLVMBasicBlockAsValue(cont_bb);
 }
 
+static void patch_bc_instructions(codegen* code, list* to_be_patched, LLVMBasicBlockRef patch) {
+   list_it bc = NULL;
+   for (bc = to_be_patched->front; bc != NULL; bc = bc->next) {
+       bc_patch_info* patch_info = (bc_patch_info*) bc->data;
+
+       LLVMBasicBlockRef current_block = get_current_block(code);
+
+       LLVMPositionBuilderBefore(code->ir_builder, patch_info->instr);
+       LLVMBuildBr(code->ir_builder, patch);
+       LLVMInstructionRemoveFromParent(patch_info->instr);
+
+       LLVMPositionBuilderAtEnd(code->ir_builder, current_block);
+   }
+}
+
 LLVMValueRef codegen_generate_while_stmt(codegen *code, stmt *ast_node) {
     assert(code);
     assert(ast_node && ast_node->type == WHILE_STMT);
@@ -707,14 +747,27 @@ LLVMValueRef codegen_generate_while_stmt(codegen *code, stmt *ast_node) {
 
     push_existing_block(code, loop_bb);
     {
-        stmt loop_body_stmt = {0};
-        loop_body_stmt.type = BLOCK_STMT;
-        memcpy(&loop_body_stmt.as.block, &ast_while->body, sizeof(block_stmt));
+        enter_loop_body(code);
+        {
+            stmt loop_body_stmt = {0};
+            loop_body_stmt.type = BLOCK_STMT;
+            memcpy(&loop_body_stmt.as.block, &ast_while->body, sizeof(block_stmt));
 
-        LLVMValueRef loop_body_value = codegen_generate_block_stmt(code, &loop_body_stmt);
-        if (!loop_body_value) {
-            return codegen_report_error(code, &ast_while->loc, "missing while loop body");
+            LLVMValueRef loop_body_value = codegen_generate_block_stmt(code, &loop_body_stmt);
+            if (!loop_body_value) {
+                return codegen_report_error(code,
+                                            &ast_while->loc,
+                                            "missing while loop body");
+            }
+
+            list* to_be_patched_break    = (list*) list_back(&code->break_list)->data;
+            list* to_be_patched_continue = (list*) list_back(&code->continue_list)->data;
+
+            // patch break and continue instructions
+            patch_bc_instructions(code, to_be_patched_break, continue_bb);
+            patch_bc_instructions(code, to_be_patched_continue, condition_bb);
         }
+        exit_loop_body(code);
 
         LLVMBuildBr(code->ir_builder, condition_bb);
     }
@@ -744,30 +797,46 @@ LLVMValueRef codegen_generate_break_stmt(codegen* code, stmt* ast_node) {
     assert(code);
     assert(ast_node && ast_node->type == BREAK_STMT);
 
-    //use br label <dest> IR
-    //in this case: br label [while/for exit]
-    //LLVMValueRef LLVMBuildBr (LLVMBuilderRef, LLVMBasicBlockRef Dest)
+    break_stmt* ast_break = &ast_node->as.brk;
 
-    //return LLVMBuildBr(code->ir_builder, brk_dest);
-    (void)code;
-    (void)ast_node;
+    if (!is_break_continue_allowed()) {
+        return codegen_report_error(code,
+                                    &ast_break->loc,
+                                    "break statement is only allowed inside a loop body.");
+    }
 
-    return NULL;
+    LLVMValueRef break_value       = LLVMBuildBr(code->ir_builder, get_current_block(code));
+    LLVMBasicBlockRef break_parent = get_current_block(code);
+
+    list* current_break_patch_list = (list*) list_back(&code->break_list)->data;
+    push_bc_patch_info(code, current_break_patch_list, break_parent, break_value);
+
+    // for now generate a br instruction with a dummy label that we will
+    // patch later.
+    return break_value;
 }
 
 LLVMValueRef codegen_generate_continue_stmt(codegen* code, stmt* ast_node) {
     assert(code);
     assert(ast_node && ast_node->type == CONTINUE_STMT);
 
-    //use br label <dest> IR
-    //in this case: br label [while/for condition]
-    //LLVMValueRef LLVMBuildBr (LLVMBuilderRef, LLVMBasicBlockRef Dest)
+    continue_stmt* ast_cont = &ast_node->as.cont;
 
-    //return LLVMBuildBr(code->ir_builder, cont_dest);
-    (void)code;
-    (void)ast_node;
+    if (!is_break_continue_allowed()) {
+        return codegen_report_error(code,
+                                    &ast_cont->loc,
+                                    "continue statement is only allowed inside a loop body.");
+    }
 
-    return NULL;
+    LLVMValueRef continue_value = LLVMBuildBr(code->ir_builder, get_current_block(code));
+    LLVMBasicBlockRef continue_parent = get_current_block(code);
+
+    list* current_continue_patch_list = (list*) list_back(&code->continue_list)->data;
+    push_bc_patch_info(code, current_continue_patch_list, continue_parent, continue_value);
+
+    // for now generate a br instruction with a dummy label that we will
+    // patch later.
+    return continue_value;
 }
 
 LLVMValueRef codegen_generate_return_stmt(codegen* code, stmt* ast_node) {
@@ -1137,5 +1206,16 @@ void codegen_generate_module(codegen* code, module* ast_mod) {
     assert(code);
     assert(ast_mod);
 
-    list_for_each(&ast_mod->modules, module_for_each, (void*) code);
+    // We need to create a global function for the builder to start
+    // generating ir in case we have global variables.
+    LLVMTypeRef main_params[]    = {};
+    LLVMTypeRef main_func_type   = LLVMFunctionType(LLVMVoidTypeInContext(code->context), main_params, 0, false);
+    LLVMValueRef main_func       = LLVMAddFunction(code->module, "global", main_func_type);
+    LLVMBasicBlockRef main_block = LLVMAppendBasicBlockInContext(code->context, main_func, "entry");
+
+    push_existing_block(code, main_block);
+    {
+        list_for_each(&ast_mod->modules, module_for_each, (void*) code);
+    }
+    pop_block(code);
 }

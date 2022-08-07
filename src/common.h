@@ -38,6 +38,8 @@ string  string_create(arena* mem, const char* data);
 string  string_create_from(arena* mem, const char* data, uint32_t length);
 
 list     list_create(size_t element_size);
+bool     list_is_empty(list* li);
+void     list_purge(list* li);
 void     list_push_back(arena* mem, list* li, void* data);
 void*    list_pop_back(list* li);
 list_it  list_front(list* li);

@@ -24,9 +24,17 @@ fn main(x: i8, y: i8): i32 {
       print("X is greater than Y.\n");
    }
 
-   while (x < 5) {
+   while (x < 1) {
       print("I am here!\n");
       x = x + 1;
+      break;
+      continue;
+      while (x < 2) {
+        break;
+        while (y < 3) {
+            continue;
+        }
+      }
    }
 
    dimos = 5 + 6;

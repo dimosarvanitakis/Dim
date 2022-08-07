@@ -65,10 +65,10 @@ int main(int argc, char* argv[]) {
 
     fprintf(stdout, "\n Generated Code \n %s", LLVMPrintModuleToString(code.module));
     char* errors = NULL;
-    LLVMVerifyModule(code.module, LLVMAbortProcessAction, &errors);
+    LLVMVerifyModule(code.module, LLVMPrintMessageAction, &errors);
     LLVMDisposeMessage(errors);
 
-    // if not errors accured print the generated code.
+    // if not errors occurred print the generated code.
     // if (!code.errors) {
     //} else {
     //    fprintf(stderr, "Compilation error(s). Aborting.\n");

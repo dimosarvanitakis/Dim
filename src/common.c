@@ -44,6 +44,16 @@ list list_create(size_t element_size) {
     return li;
 }
 
+bool list_is_empty(list* li) {
+    return (!li->length);
+}
+
+void list_purge(list* li) {
+    li->back   = NULL;
+    li->front  = NULL;
+    li->length = 0;
+}
+
 void list_push_back(arena* mem, list* li, void* data) {
     assert(mem);
     assert(li);
@@ -70,14 +80,25 @@ void list_push_back(arena* mem, list* li, void* data) {
 void* list_pop_back(list* li) {
     assert(li);
 
-    list_it it = li->front;
-    while(it && it->next != li->back) {
-        it = it->next;
-    }
+    if (list_is_empty(li))
+        return NULL;
 
-    void* data = li->back->data;
-    it->next   = li->back->next;
-    li->back   = it;
+    void* data = NULL;
+    if (li->front != li->back) {
+        list_it it = li->front;
+        while(it && it->next != li->back) {
+            it = it->next;
+        }
+
+        data     = li->back->data;
+        it->next = li->back->next;
+        li->back = it;
+    } else {
+        data = li->back->data;
+
+        li->front = NULL;
+        li->back  = NULL;
+    }
 
     li->length--;
 

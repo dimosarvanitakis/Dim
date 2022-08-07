@@ -9,6 +9,7 @@
 #include "symbol_table.h"
 
 typedef struct build_in_function build_in_function;
+typedef struct bc_patch_info     bc_patch_info;
 typedef struct codegen_symbol    codegen_symbol;
 typedef struct codegen           codegen;
 
@@ -16,6 +17,11 @@ struct build_in_function {
     LLVMValueRef  function;
     const char*   name;
     void*         address;
+};
+
+struct bc_patch_info {
+    LLVMValueRef       instr;
+    LLVMBasicBlockRef* parent;
 };
 
 struct codegen_symbol {
@@ -41,6 +47,11 @@ struct codegen {
 
     // Keep a list of blocks
     list blocks;
+
+    // Keep track of the defered patch info for continue and
+    // break instructions
+    list break_list;
+    list continue_list;
 
     build_in_function build_in_functions[BUILD_IN_FUNCTIONS_COUNT];
     LLVMTypeRef       types_to_llvm[VAR_TYPES_COUNT];
