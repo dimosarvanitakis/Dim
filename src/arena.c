@@ -1,65 +1,65 @@
 #include "arena.h"
 
-region* region_create(int32_t capacity) {
-  region* result;
+memory_region* region_create(int32_t capacity) {
+  memory_region* region;
 
-  result = (region*) malloc(sizeof(region));
-  result->capacity = capacity;
-  result->size     = 0;
-  result->buffer   = (char*) malloc(capacity * sizeof(char));
-  result->next     = NULL;
+  region = (memory_region*) malloc(sizeof(memory_region));
+  region->capacity = capacity;
+  region->size     = 0;
+  region->buffer   = (char*) malloc(capacity * sizeof(char));
+  region->next     = NULL;
 
-  memset(result->buffer,'\0', capacity);
+  memset(region->buffer,'\0', capacity);
 
-  return result;
+  return region;
 }
 
-void region_clear(region* reg) {
+void region_clear(memory_region* region) {
   // Now we can overate the region
-  reg->size = 0;
+  region->size = 0;
 }
 
-void region_free(region* reg) {
-  free(reg->buffer);
-  free(reg);
+void region_free(memory_region* region) {
+  free(region->buffer);
+  free(region);
 
-  reg = NULL;
+  region = NULL;
 }
 
-void region_tell_stats(region* reg) {
-    fprintf(stdout, "\t[region] [Mem:%p] [Size:%u] [Capacity:%u] [Free:%.2f]\n",
-            reg->buffer,
-            reg->size,
-            reg->capacity,
-            (float)((float)(reg->capacity - reg->size) / (float)reg->capacity) * 100);
+void region_tell_stats(memory_region* region) {
+    fprintf(stdout, "\t[memory_region] [Mem:%p] [Size:%u] [Capacity:%u] [Free:%.2f]\n",
+            region->buffer,
+            region->size,
+            region->capacity,
+            (float)((float)(region->capacity - region->size) / (float)region->capacity) * 100);
 }
 
-arena arena_create(const char *id) {
-  arena mem;
+memory_arena* arena_create(const char *id) {
+  memory_arena* arena = (memory_arena*) malloc(sizeof(memory_arena));
 
-  mem.id   = id;
-  mem.head = NULL;
-  mem.last = NULL;
+  arena->id   = id;
+  arena->head = NULL;
+  arena->last = NULL;
 
-  return mem;
+  return arena;
 }
 
 // TODO: Add alignment
-void* arena_allocate(arena* mem, int32_t size) {
-    // first time using the memory mem. Allocate the first region.
-    if (mem->head == NULL &&
-        mem->last == NULL) {
+void* arena_allocate(memory_arena* arena, int32_t size) {
+    // first time using the memory arena. Allocate the first memory_region.
+    if (arena->head == NULL &&
+        arena->last == NULL) {
       int32_t new_region_size = (size > DEFAULT_ARENA_SIZE ? size : DEFAULT_ARENA_SIZE);
-      region* new_region      = region_create(new_region_size);
+      memory_region* new_region      = region_create(new_region_size);
 
-      mem->head = new_region;
-      mem->last = new_region;
+      arena->head = new_region;
+      arena->last = new_region;
     }
 
     // Begin the search to which we allocate.
-    region*  curr   = mem->last;
-    bool     alloc  = false;
-    char*    memory = NULL;
+    memory_region* curr = arena->last;
+    bool  alloc  = false;
+    char* memory = NULL;
 
     while (!alloc) {
       memory = (char *) (curr->buffer + curr->size);
@@ -67,7 +67,7 @@ void* arena_allocate(arena* mem, int32_t size) {
 
       if ((curr->size + r_size) > curr->capacity) {
 
-        // Search in the next available region.
+        // Search in the next available memory_region.
         if (curr->next != NULL) {
           curr = curr->next;
 
@@ -75,12 +75,12 @@ void* arena_allocate(arena* mem, int32_t size) {
         // Not another region available we running out of memory.
         // Allocate a new region and allocate the memory in the next cicle.
         } else {
-          int32_t new_region_size = (size > DEFAULT_ARENA_SIZE ? size : DEFAULT_ARENA_SIZE);
-          region* new_region      = region_create(new_region_size);
+          int32_t new_region_size   = (size > DEFAULT_ARENA_SIZE ? size : DEFAULT_ARENA_SIZE);
+          memory_region* new_region = region_create(new_region_size);
 
-          mem->last->next = new_region;
-          mem->last       = new_region;
-          curr            = mem->last;
+          arena->last->next = new_region;
+          arena->last       = new_region;
+          curr            = arena->last;
 
           continue;
         }
@@ -98,41 +98,37 @@ void* arena_allocate(arena* mem, int32_t size) {
     return memory;
 }
 
-// void PushregionToarena(arena* arena, region* region) {
-//   //We can add it to the beggin of the list
-//   region->next = arena->head;
-//   arena->head  = region;
-// }
-
-void arena_clear(arena* mem) {
-  for (region* reg = mem->head;
-       reg != NULL;
-       reg = reg->next) {
-    region_clear(reg);
+void arena_clear(memory_arena* arena) {
+  for (memory_region* region = arena->head;
+       region != NULL;
+       region = region->next)
+  {
+    region_clear(region);
   }
 }
 
-void arena_free(arena* mem) {
-    region* reg = mem->head;
+void arena_free(memory_arena* arena) {
+    memory_region* region = arena->head;
 
-    while (reg != NULL) {
-        region* next = reg->next;
+    while (region != NULL) {
+        memory_region* next = region->next;
 
-        region_free(reg);
+        region_free(region);
 
-        reg = next;
+        region = next;
     }
 
-    mem->head = NULL;
-    mem->last = NULL;
+    arena->head = NULL;
+    arena->last = NULL;
 }
 
-void arena_inspect(arena* mem) {
-    fprintf(stdout, "Arena Stats[%s]:\n", mem->id);
+void arena_inspect(memory_arena* arena) {
+    fprintf(stdout, "Memory Arena Stats[%s]:\n", arena->id);
 
-    for (region* reg = mem->head;
-         reg != NULL;
-         reg = reg->next) {
-      region_tell_stats(reg);
+    for (memory_region* region = arena->head;
+         region != NULL;
+         region = region->next)
+    {
+      region_tell_stats(region);
     }
 }

@@ -21,12 +21,10 @@ struct build_in_function {
 
 struct bc_patch_info {
     LLVMValueRef       instr;
-    LLVMBasicBlockRef* parent;
 };
 
 struct codegen_symbol {
     int32_t      scope;
-    bool         is_function;
     LLVMValueRef value;
     LLVMTypeRef  type;
 };
@@ -40,18 +38,18 @@ struct codegen {
     int32_t errors;
 
     // codegen phase has it own memory arena
-    arena mem;
+    memory_arena* arena;
 
     // Symbol table
-    symbol_table symbols;
+    symbol_table* symbols;
 
     // Keep a list of blocks
-    list blocks;
+    list* blocks;
 
     // Keep track of the defered patch info for continue and
     // break instructions
-    list break_list;
-    list continue_list;
+    list* break_list;
+    list* continue_list;
 
     build_in_function build_in_functions[BUILD_IN_FUNCTIONS_COUNT];
     LLVMTypeRef       types_to_llvm[VAR_TYPES_COUNT];

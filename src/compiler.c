@@ -18,7 +18,7 @@ void print_help() {
 
 int main(int argc, char* argv[]) {
     char* file = NULL;
-    arena mem  = arena_create("lexer_parser_arena");
+    memory_arena* arena = arena_create("lexer_parser_arena");
 
     if (argc <= 1) {
         print_help();
@@ -34,7 +34,7 @@ int main(int argc, char* argv[]) {
 
             case 'f': {
                 unsigned long size = strlen(optarg);
-                file = arena_allocate(&mem, sizeof(char)* (size + 1));
+                file = arena_allocate(arena, sizeof(char)* (size + 1));
                 strcpy(file, optarg);
             } break;
 
@@ -54,10 +54,10 @@ int main(int argc, char* argv[]) {
         print_help();
     }
 
-    lexer lex  = lexer_create(&mem, (const char*) file);
+    lexer lex  = lexer_create(arena, (const char*) file);
 
     module ast = {0};
-    ast = parse(&mem, &lex);
+    ast = parse(arena, &lex);
 
     codegen code = codegen_create(file);
 
@@ -76,8 +76,8 @@ int main(int argc, char* argv[]) {
 
     codegen_clear(&code);
 
-    arena_inspect(&mem);
-    arena_free(&mem);
+    arena_inspect(arena);
+    arena_free(arena);
 
     return 0;
 }

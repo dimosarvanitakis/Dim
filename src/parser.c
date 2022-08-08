@@ -79,13 +79,13 @@ static var_type convert_string_to_var_type(string* v_type) {
 
 // func_call_expr -> |
 //                   | 'ID' '(' epxr [,expr]* ')'
-static func_call_expr parse_func_call_expr(arena *mem, lexer *lex) {
+static func_call_expr parse_func_call_expr(memory_arena *arena, lexer *lex) {
 	func_call_expr func_call = {0};
 
 	token* curr_token   = lexer_get_current_token(lex);
 	func_call.loc       = curr_token->loc;
 	func_call.name      = curr_token->value;
-	func_call.arguments = list_create(sizeof(expr));
+	func_call.arguments = list_create(arena);
 
 	lexer_expect_token(lex, ID);
 	lexer_expect_token(lex, OPEN_PARENTHESIS);
@@ -93,17 +93,21 @@ static func_call_expr parse_func_call_expr(arena *mem, lexer *lex) {
 	curr_token = lexer_get_current_token(lex);
 	if (curr_token->type != CLOSE_PARENTHESIS) {
 
-		expr argument = {0};
-		argument = parse_expr(mem, lex);
+	    expr argument            = parse_expr(arena, lex);
+		expr* to_insert_argument = (expr*) arena_allocate(arena, sizeof(expr));
+		memcpy(to_insert_argument, &argument, sizeof(expr));
 
-		list_push_back(mem, &func_call.arguments, (void*) &argument);
+		list_push_back(arena, func_call.arguments, to_insert_argument);
 
 		curr_token = lexer_get_current_token(lex);
 		while (curr_token->type == COMMA) {
 			lexer_expect_token(lex, COMMA);
 
-            argument = parse_expr(mem, lex);
-			list_push_back(mem, &func_call.arguments, (void*) &argument);
+            argument           = parse_expr(arena, lex);
+			to_insert_argument = (expr*) arena_allocate(arena, sizeof(expr));
+			memcpy(to_insert_argument, &argument, sizeof(expr));
+
+			list_push_back(arena, func_call.arguments, to_insert_argument);
 
 			curr_token = lexer_get_current_token(lex);
 		}
@@ -139,7 +143,7 @@ static lvalue_expr parse_lvalue_expr(lexer* lex) {
 //                 | func_call_expr
 //                 | lvalue_expr
 //                 | '(' expr ')'
-static expr parse_primary_expr(arena* mem, lexer* lex) {
+static expr parse_primary_expr(memory_arena* arena, lexer* lex) {
  	token* curr_token = lexer_get_current_token(lex);
 
 	switch(curr_token->type) {
@@ -222,7 +226,7 @@ static expr parse_primary_expr(arena* mem, lexer* lex) {
 			token* ahead = lexer_look_ahead(lex, 1);
 			if (ahead->type == OPEN_PARENTHESIS) {
 				id.type         = FUNC_CALL_EXPR;
-				id.as.func_call = parse_func_call_expr(mem, lex);
+				id.as.func_call = parse_func_call_expr(arena, lex);
 			// lvalue
 			} else {
 				id.type      = LVALUE_EXPR;
@@ -238,7 +242,7 @@ static expr parse_primary_expr(arena* mem, lexer* lex) {
 
 			expr par_expr = {0};
 			par_expr.loc  = curr_token->loc;
-			par_expr      = parse_expr(mem, lex);
+			par_expr      = parse_expr(arena, lex);
 
 			lexer_expect_token(lex, CLOSE_PARENTHESIS);
 
@@ -258,12 +262,12 @@ static expr parse_primary_expr(arena* mem, lexer* lex) {
 // http://crockford.com/javascript/tdop/tdop.html
 // https://kevinushey.github.io/blog/2016/02/12/top-down-operator-precedence-parsing-with-r/
 // https://eli.thegreenplace.net/2010/01/02/top-down-operator-precedence-parsing
-static expr parse_expr_with_precedence(arena* mem, lexer* lex, int32_t precedence) {
+static expr parse_expr_with_precedence(memory_arena* arena, lexer* lex, int32_t precedence) {
 	if (precedence >= MAX_BIN_OP_PRECEDENCE) {
-		return parse_primary_expr(mem, lex);
+		return parse_primary_expr(arena, lex);
 	}
 
-	expr lhs = parse_expr_with_precedence(mem, lex, precedence + 10);
+	expr lhs = parse_expr_with_precedence(arena, lex, precedence + 10);
 
 	token* curr_token = lexer_get_current_token(lex);
 	while ( (is_token_binary_operator(curr_token)) &&
@@ -272,7 +276,7 @@ static expr parse_expr_with_precedence(arena* mem, lexer* lex, int32_t precedenc
 		lexer_eat_token(lex);
 
 		expr temp_expr = {0};
-		binary_op_expr* binary_op = arena_allocate(mem, sizeof(binary_op_expr));
+		binary_op_expr* binary_op = arena_allocate(arena, sizeof(binary_op_expr));
 
 		temp_expr.loc  = curr_token->loc;
 		temp_expr.type = BINARY_OP_EXPR;
@@ -280,7 +284,7 @@ static expr parse_expr_with_precedence(arena* mem, lexer* lex, int32_t precedenc
 		binary_op->type = (binary_op_type) curr_token->type;
 		binary_op->loc  = curr_token->loc;
 		binary_op->lhs  = lhs;
-		binary_op->rhs  = parse_expr_with_precedence(mem, lex, precedence + 10);
+		binary_op->rhs  = parse_expr_with_precedence(arena, lex, precedence + 10);
 
 		temp_expr.as.binary_op = binary_op;
 
@@ -292,8 +296,8 @@ static expr parse_expr_with_precedence(arena* mem, lexer* lex, int32_t precedenc
 	return lhs;
 }
 
-expr parse_expr(arena* mem, lexer* lex) {
-	return parse_expr_with_precedence(mem, lex, 0);
+expr parse_expr(memory_arena* arena, lexer* lex) {
+	return parse_expr_with_precedence(arena, lex, 0);
 }
 
 // if_stmt ->    |
@@ -304,18 +308,18 @@ expr parse_expr(arena* mem, lexer* lex) {
 
 // else_body ->  |
 //               | 'else' block_stmt
-if_stmt parse_if_stmt(arena* mem, lexer* lex) {
+if_stmt parse_if_stmt(memory_arena* arena, lexer* lex) {
 	if_stmt iff = {0};
 
 	token* curr_token = lexer_expect_token(lex, IF);
 	lexer_expect_token(lex, OPEN_PARENTHESIS);
 
 	iff.loc       = curr_token->loc;
-	iff.condition = parse_expr(mem, lex);
+	iff.condition = parse_expr(arena, lex);
 
 	lexer_expect_token(lex, CLOSE_PARENTHESIS);
 
-	iff.then_body = parse_block_stmt(mem, lex);
+	iff.then_body = parse_block_stmt(arena, lex);
 
 	// check for else
 	curr_token = lexer_get_current_token(lex);
@@ -323,7 +327,7 @@ if_stmt parse_if_stmt(arena* mem, lexer* lex) {
 		lexer_eat_token(lex);
 
 		iff.has_else  = true;
-		iff.else_body = parse_block_stmt(mem, lex);
+		iff.else_body = parse_block_stmt(arena, lex);
 	}
 
 	return iff;
@@ -332,14 +336,14 @@ if_stmt parse_if_stmt(arena* mem, lexer* lex) {
 // while_stmt -> |
 //               | 'while' '(' expr ')' block_stmt
 //               | 'while' '(' expr ')' ';'
-while_stmt parse_while_stmt(arena* mem, lexer* lex) {
+while_stmt parse_while_stmt(memory_arena* arena, lexer* lex) {
 	while_stmt whilee = {0};
 
 	token* curr_token = lexer_expect_token(lex, WHILE);
 	lexer_expect_token(lex, OPEN_PARENTHESIS);
 
 	whilee.loc       = curr_token->loc;
-	whilee.condition = parse_expr(mem, lex);
+	whilee.condition = parse_expr(arena, lex);
 
 	lexer_expect_token(lex, CLOSE_PARENTHESIS);
 
@@ -351,25 +355,25 @@ while_stmt parse_while_stmt(arena* mem, lexer* lex) {
 		return whilee;
 	}
 
-	whilee.body = parse_block_stmt(mem, lex);
+	whilee.body = parse_block_stmt(arena, lex);
 
 	return whilee;
 }
 
 // do_stmt -> |
 //            | 'do' block_stmt 'while' '(' expr ')'
-do_stmt parse_do_stmt(arena* mem, lexer* lex) {
+do_stmt parse_do_stmt(memory_arena* arena, lexer* lex) {
 	do_stmt doo = {0};
 
 	token* curr_token = lexer_expect_token(lex, DO);
 
-	doo.body = parse_block_stmt(mem, lex);
+	doo.body = parse_block_stmt(arena, lex);
 	doo.loc  = curr_token->loc;
 
 	lexer_expect_token(lex, WHILE);
 	lexer_expect_token(lex, OPEN_PARENTHESIS);
 
-	doo.condition = parse_expr(mem, lex);
+	doo.condition = parse_expr(arena, lex);
 
 	lexer_expect_token(lex, CLOSE_PARENTHESIS);
 
@@ -404,7 +408,7 @@ continue_stmt parse_continue_stmt(lexer* lex) {
 
 // return_stmt -> |
 //                | 'return' expr ';'
-return_stmt parse_return_stmt(arena* mem, lexer* lex) {
+return_stmt parse_return_stmt(memory_arena* arena, lexer* lex) {
 	return_stmt ret = {0};
 
 	token* curr_token = lexer_expect_token(lex, RETURN);
@@ -419,7 +423,7 @@ return_stmt parse_return_stmt(arena* mem, lexer* lex) {
 	}
 
 	ret.has_result = true;
-	ret.result     = parse_expr(mem, lex);
+	ret.result     = parse_expr(arena, lex);
 
 	lexer_expect_token(lex, SEMICOLON);
 
@@ -428,18 +432,19 @@ return_stmt parse_return_stmt(arena* mem, lexer* lex) {
 
 // block_stmt -> |
 //               | '{' stmts* '}'
-block_stmt parse_block_stmt(arena* mem, lexer* lex) {
+block_stmt parse_block_stmt(memory_arena* arena, lexer* lex) {
 	block_stmt block = {0};
-	block.stmts = list_create(sizeof(stmt));
+	block.stmts = list_create(arena);
 
 	lexer_expect_token(lex, OPEN_BRACE);
 
 	token* curr_token = lexer_get_current_token(lex);
 	while (curr_token->type != CLOSE_BRACE) {
-		stmt stm;
-		stm = parse_stmt(mem, lex);
+		stmt stm             = parse_stmt(arena, lex);
+		stmt* to_insert_stmt = (stmt*) arena_allocate(arena, sizeof(stmt));
+		memcpy(to_insert_stmt, &stm, sizeof(stmt));
 
-		list_push_back(mem, &block.stmts, (void*) &stm);
+		list_push_back(arena, block.stmts, to_insert_stmt);
 
 		curr_token = lexer_get_current_token(lex);
 	}
@@ -451,7 +456,7 @@ block_stmt parse_block_stmt(arena* mem, lexer* lex) {
 
 // var_assign -> |
 //               | ID '=' expr ';'
-var_assign parse_var_assign(arena* mem, lexer* lex) {
+var_assign parse_var_assign(memory_arena* arena, lexer* lex) {
 	var_assign var = {0};
 
 	token* curr_token = lexer_expect_token(lex, ID);
@@ -460,7 +465,7 @@ var_assign parse_var_assign(arena* mem, lexer* lex) {
 
 	lexer_expect_token(lex, ASSIGN);
 
-	var.value = parse_expr(mem, lex);
+	var.value = parse_expr(arena, lex);
 
 	lexer_expect_token(lex, SEMICOLON);
 
@@ -485,14 +490,14 @@ var_assign parse_var_assign(arena* mem, lexer* lex) {
 //         | block_stmt
 // 		   | var_decl
 // 		   | var_assign
-stmt parse_stmt(arena* mem, lexer* lex) {
+stmt parse_stmt(memory_arena* arena, lexer* lex) {
 	token* curr_token = lexer_get_current_token(lex);
 	switch(curr_token->type) {
 		case IF: {
 			stmt result = {0};
 
 			result.type   = IF_STMT;
-			result.as.iff = parse_if_stmt(mem, lex);
+			result.as.iff = parse_if_stmt(arena, lex);
 
 			return result;
 		} break;
@@ -501,7 +506,7 @@ stmt parse_stmt(arena* mem, lexer* lex) {
 			stmt result = {0};
 
 			result.type      = WHILE_STMT;
-			result.as.whilee = parse_while_stmt(mem, lex);
+			result.as.whilee = parse_while_stmt(arena, lex);
 
 			return result;
 		} break;
@@ -510,7 +515,7 @@ stmt parse_stmt(arena* mem, lexer* lex) {
 			stmt result = {0};
 
 			result.type    = DO_STMT;
-			result.as.doo = parse_do_stmt(mem, lex);
+			result.as.doo = parse_do_stmt(arena, lex);
 
 			return result;
 		} break;
@@ -537,7 +542,7 @@ stmt parse_stmt(arena* mem, lexer* lex) {
 			stmt result = {0};
 
 			result.type       = RETURN_STMT;
-			result.as.returnn = parse_return_stmt(mem, lex);
+			result.as.returnn = parse_return_stmt(arena, lex);
 
 			return result;
 		} break;
@@ -546,7 +551,7 @@ stmt parse_stmt(arena* mem, lexer* lex) {
 			stmt result = {0};
 
 			result.type     = BLOCK_STMT;
-			result.as.block = parse_block_stmt(mem, lex);
+			result.as.block = parse_block_stmt(arena, lex);
 
 			return result;
 		} break;
@@ -557,7 +562,7 @@ stmt parse_stmt(arena* mem, lexer* lex) {
 				stmt result = {0};
 
 				result.type        = VAR_ASSIGN_STMT;
-				result.as.var_assi = parse_var_assign(mem, lex);
+				result.as.var_assi = parse_var_assign(arena, lex);
 
 				return result;
 			}
@@ -567,7 +572,7 @@ stmt parse_stmt(arena* mem, lexer* lex) {
 			stmt result = {0};
 
 			result.type        = VAR_DEFINITION_STMT;
-			result.as.var_defi = parse_var_def(mem, lex);
+			result.as.var_defi = parse_var_def(arena, lex);
 
 			return result;
 		} break;
@@ -579,7 +584,7 @@ stmt parse_stmt(arena* mem, lexer* lex) {
 
 	stmt result = {0};
 
-	result.as.exprr = parse_expr(mem, lex);
+	result.as.exprr = parse_expr(arena, lex);
 	result.type     = EXPRESSION_STMT;
 	lexer_expect_token(lex, SEMICOLON);
 
@@ -610,7 +615,7 @@ static var_def parse_var_common(lexer* lex) {
 // var_def -> |
 //            | var_common ';'
 //            | const var_common ';'
-var_def parse_var_def(arena* mem, lexer* lex) {
+var_def parse_var_def(memory_arena* arena, lexer* lex) {
 	// check for const
 	token* curr_token = lexer_get_current_token(lex);
 	bool is_const     = false;
@@ -629,7 +634,7 @@ var_def parse_var_def(arena* mem, lexer* lex) {
 			lexer_eat_token(lex);
 
 			var.is_initialized = true;
-			var.rhs            = parse_expr(mem, lex);
+			var.rhs            = parse_expr(arena, lex);
 		} else {
 			lexer_report_error(&var.loc,
 							   "uninitialized `const %s`",
@@ -641,7 +646,7 @@ var_def parse_var_def(arena* mem, lexer* lex) {
 			lexer_eat_token(lex);
 
 			var.is_initialized = true;
-			var.rhs            = parse_expr(mem, lex);
+			var.rhs            = parse_expr(arena, lex);
 		}
 	}
 
@@ -676,7 +681,7 @@ static func_param parse_func_param(lexer* lex) {
 //              | 'func' ID param_list ':' TYPE block_stmt
 // param_lis -> |
 //              | '(' param [',' param]* ')'
-func_decl parse_func_decl(arena* mem, lexer* lex) {
+func_decl parse_func_decl(memory_arena* arena, lexer* lex) {
 	func_decl func = {0};
 
 	lexer_expect_token(lex, FUNC);
@@ -684,22 +689,28 @@ func_decl parse_func_decl(arena* mem, lexer* lex) {
 	token* func_token = lexer_expect_token(lex, ID);
 	func.loc        = func_token->loc;
 	func.name       = func_token->value;
-	func.parameters = list_create(sizeof(func_param));
+	func.parameters = list_create(arena);
 
 	lexer_expect_token(lex, OPEN_PARENTHESIS);
 
 	token* curr_token = lexer_get_current_token(lex);
 	if (curr_token->type != CLOSE_PARENTHESIS) {
 
-		func_param param = parse_func_param(lex);
-		list_push_back(mem, &func.parameters, (void*) &param);
+		func_param param            = parse_func_param(lex);
+		func_param* to_insert_param = (func_param*) arena_allocate(arena, sizeof(func_param));
+		memcpy(to_insert_param, &param, sizeof(func_param));
+
+		list_push_back(arena, func.parameters, to_insert_param);
 
 		curr_token = lexer_get_current_token(lex);
 		while (curr_token->type == COMMA) {
 			lexer_eat_token(lex);
 
-			param = parse_func_param(lex);
-			list_push_back(mem, &func.parameters, (void*) &param);
+			param           = parse_func_param(lex);
+			to_insert_param = (func_param*) arena_allocate(arena, sizeof(func_param));
+			memcpy(to_insert_param, &param, sizeof(func_param));
+
+			list_push_back(arena, func.parameters, to_insert_param);
 
 			curr_token = lexer_get_current_token(lex);
 		}
@@ -718,7 +729,7 @@ func_decl parse_func_decl(arena* mem, lexer* lex) {
 		func.return_type  = convert_string_to_var_type(&func_token->value);
 	}
 
-	func.body = parse_block_stmt(mem, lex);
+	func.body = parse_block_stmt(arena, lex);
 
 	return func;
 }
@@ -726,9 +737,9 @@ func_decl parse_func_decl(arena* mem, lexer* lex) {
 // module -> |
 //           | var_def
 //           | func_def
-module parse_module(arena* mem, lexer* lex) {
+module parse_module(memory_arena* arena, lexer* lex) {
 	module root  = {0};
-	root.modules = list_create(sizeof(top_level));
+	root.modules = list_create(arena);
 
 	while (true) {
 		token* curr_token = lexer_get_current_token(lex);
@@ -739,21 +750,21 @@ module parse_module(arena* mem, lexer* lex) {
 		switch (curr_token->type) {
 			case CONST:
 			case VAR: {
-				top_level var_def = {0};
+				top_level* var_def = (top_level*) arena_allocate(arena, sizeof(top_level));
 
-				var_def.type   = VAR_DEF_TL;
-				var_def.as.var = parse_var_def(mem, lex);
+				var_def->type   = VAR_DEF_TL;
+				var_def->as.var = parse_var_def(arena, lex);
 
-				list_push_back(mem, &root.modules, (void *) &var_def);
+				list_push_back(arena, root.modules, var_def);
 			} break;
 
 			case FUNC: {
-				top_level func_decl = {0};
+				top_level* func_decl = (top_level*) arena_allocate(arena, sizeof(top_level));
 
-				func_decl.type    = FUN_DECL_TL;
-				func_decl.as.func = parse_func_decl(mem, lex);
+				func_decl->type    = FUN_DECL_TL;
+				func_decl->as.func = parse_func_decl(arena, lex);
 
-				list_push_back(mem, &root.modules, (void *) &func_decl);
+				list_push_back(arena, root.modules, func_decl);
 			} break;
 
 			default : {
@@ -768,6 +779,6 @@ module parse_module(arena* mem, lexer* lex) {
 }
 
 // module
-module parse(arena* mem, lexer* lex) {
-	return parse_module(mem, lex);
+module parse(memory_arena* arena, lexer* lex) {
+	return parse_module(arena, lex);
 }

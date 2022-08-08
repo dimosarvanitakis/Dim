@@ -31,10 +31,10 @@ struct symbol_table {
   symbol_table_entry   **table_head;
 };
 
-symbol_table      symbol_table_create(arena* mem);
+symbol_table*     symbol_table_create(memory_arena* arena);
 uint32_t          symbol_table_get_length(symbol_table* osymbol_table);
 
-symbol_table_code symbol_table_put(arena* mem, 
+symbol_table_code symbol_table_put(memory_arena* arena,
                                    symbol_table* osymbol_table, 
                                    const char *pc_key, 
                                    const void *pv_value);

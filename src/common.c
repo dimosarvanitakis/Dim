@@ -9,11 +9,11 @@ int32_t get_string_literal_length(const char* string) {
     return length;
 }
 
-string string_create(arena* mem, const char* data) {
+string string_create(memory_arena* arena, const char* data) {
     string result = {0};
 
     result.length = get_string_literal_length(data);
-    result.data   = arena_allocate(mem, sizeof(char) * (result.length + 1));
+    result.data   = arena_allocate(arena, sizeof(char) * (result.length + 1));
 
     memcpy(result.data, data, result.length + 1);
     result.data[result.length] = '\0';
@@ -21,11 +21,11 @@ string string_create(arena* mem, const char* data) {
     return result;
 }
 
-string string_create_from(arena* mem, const char* data, uint32_t length) {
+string string_create_from(memory_arena* arena, const char* data, uint32_t length) {
     string result = {0};
 
     result.length = length;
-    result.data   = arena_allocate(mem, sizeof(char) * (length + 1));
+    result.data   = arena_allocate(arena, sizeof(char) * (length + 1));
 
     memcpy(result.data, data, result.length + 1);
     result.data[result.length] = '\0';
@@ -33,13 +33,12 @@ string string_create_from(arena* mem, const char* data, uint32_t length) {
     return result;
 }
 
-list list_create(size_t element_size) {
-    list li;
+list* list_create(memory_arena* arena) {
+    list* li = arena_allocate(arena, sizeof(list));
 
-    li.front        = NULL;
-    li.back         = NULL;
-    li.length       = 0;
-    li.element_size = element_size;
+    li->front        = NULL;
+    li->back         = NULL;
+    li->length       = 0;
 
     return li;
 }
@@ -54,16 +53,15 @@ void list_purge(list* li) {
     li->length = 0;
 }
 
-void list_push_back(arena* mem, list* li, void* data) {
-    assert(mem);
+void list_push_back(memory_arena* arena, list* li, void* data) {
+    assert(arena);
     assert(li);
 
-    list_node* node = arena_allocate(mem, sizeof(list_node));
+    list_node* node = arena_allocate(arena, sizeof(list_node));
     memset(node, 0, sizeof(list_node));
 
-    node->data = arena_allocate(mem, li->element_size);
+    node->data = (void*) data;
     node->next = NULL;
-    memcpy(node->data, data, li->element_size);
 
     // Empty list
     if (li->front == NULL) {
