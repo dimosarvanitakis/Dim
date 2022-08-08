@@ -3,6 +3,9 @@
 
 #include "common.h"
 
+typedef struct token	token;
+typedef struct location location;
+
 typedef enum token_type {
 	//Debug
 	NONE = 0,
@@ -65,23 +68,23 @@ typedef enum token_type {
 	TOKEN_TYPES_COUNT
 } token_type;
 
-typedef struct location {
+struct location {
     uint32_t	line;
     uint32_t	column;
     uint32_t	prev_column;
     const char* file;
-} location;
+};
 
-typedef struct token {
+struct token {
 	token_type 	type;
 	location    loc;
 	string      value;
-} token;
+};
 
 location    create_location(uint32_t line, uint32_t column, const char* file);
 
-token*      create_token(arena* mem, token_type type, location loc, const char* value);
-token*      create_token_from_string(arena* mem, token_type type, location loc, string value);
+token*      create_token(memory_arena* arena, token_type type, location loc, const char* value);
+token*      create_token_from_string(memory_arena* arena, token_type type, location loc, string value);
 
 token_type  is_keyword(string* text);
 bool        is_primitive_type(string* text);

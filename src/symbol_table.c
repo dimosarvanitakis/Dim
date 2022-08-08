@@ -8,11 +8,11 @@ static uint32_t symbol_table_hash(const char *key) {
   return ui_hash;
 }
 
-symbol_table symbol_table_create(arena* mem) {
-  symbol_table symtable = {0};
+symbol_table* symbol_table_create(memory_arena* arena) {
+  symbol_table* symtable = (symbol_table*) arena_allocate(arena, sizeof(symbol_table));
 
-  symtable.table_head = (symbol_table_entry**)arena_allocate(mem, BUCKETS * sizeof(symbol_table_entry*));
-  symtable.length     = 0U;
+  symtable->table_head = (symbol_table_entry**)arena_allocate(arena, BUCKETS * sizeof(symbol_table_entry*));
+  symtable->length     = 0U;
 
   return symtable;
 }
@@ -22,7 +22,7 @@ uint32_t symbol_table_get_length(symbol_table* osymbol_table) {
   return osymbol_table->length;
 }
 
-symbol_table_code symbol_table_put(arena* mem, symbol_table* osymbol_table, const char *key , const void *pc_value) {
+symbol_table_code symbol_table_put(memory_arena* arena, symbol_table* osymbol_table, const char *key , const void *pc_value) {
     uint32_t hashing;
     symbol_table_entry* new_entry;
 
@@ -34,17 +34,17 @@ symbol_table_code symbol_table_put(arena* mem, symbol_table* osymbol_table, cons
     }
 
     hashing = symbol_table_hash(key) % BUCKETS;
-    if ((new_entry = (symbol_table_entry*)arena_allocate(mem, sizeof(symbol_table_entry))) == NULL) {
+    if ((new_entry = (symbol_table_entry*)arena_allocate(arena, sizeof(symbol_table_entry))) == NULL) {
       return SYM_ALLOCATION_FAILED;
     }
 
-    if ((new_entry->key = (char*) arena_allocate(mem, strlen(key) + 1)) == NULL) {
+    if ((new_entry->key = (char*) arena_allocate(arena, strlen(key) + 1)) == NULL) {
       return SYM_ALLOCATION_FAILED;
     }
+    strcpy(new_entry->key, key);
 
     new_entry->value = (void*) pc_value;
-    strcpy(new_entry->key, key);
-    new_entry->next = osymbol_table->table_head[hashing];
+    new_entry->next  = osymbol_table->table_head[hashing];
 
     osymbol_table->table_head[hashing] = new_entry;
     osymbol_table->length = osymbol_table->length + 1;

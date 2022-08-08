@@ -49,7 +49,7 @@ struct literal_expr {
 struct func_call_expr {
 	string   name;
 	location loc;
-	list     arguments;
+	list*    arguments;
 };
 
 struct lvalue_expr {
@@ -106,7 +106,7 @@ struct binary_op_expr {
 //        a while statement with body of just a sigle statement.
 
 struct block_stmt {
-	list stmts;
+	list* stmts;
 };
 
 struct if_stmt {
@@ -217,7 +217,7 @@ struct func_param {
 struct func_decl {
 	location	loc;
 	string		name;
-	list		parameters;
+	list*		parameters;
 	var_type	return_type;
 	block_stmt  body;
 };
@@ -236,7 +236,7 @@ struct top_level {
 };
 
 struct module {
-	list modules;
+	list* modules;
 };
 
 #endif // !AST_H_

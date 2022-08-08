@@ -67,18 +67,18 @@ location create_location(uint32_t line, uint32_t column, const char *file) {
 	return result;
 }
 
-token* create_token(arena* mem, token_type type, location loc, const char* value) {
-	token* result = arena_allocate(mem, sizeof(token));
+token* create_token(memory_arena* arena, token_type type, location loc, const char* value) {
+	token* result = arena_allocate(arena, sizeof(token));
 
 	result->type  = type;
 	result->loc   = loc;
-	result->value = string_create(mem, value);
+	result->value = string_create(arena, value);
 
 	return result;
 }
 
-token* create_token_from_string(arena* mem, token_type type, location loc, string value) {
-	token* result = arena_allocate(mem, sizeof(token));
+token* create_token_from_string(memory_arena* arena, token_type type, location loc, string value) {
+	token* result = arena_allocate(arena, sizeof(token));
 
 	result->type = type;
 	result->loc	 = loc;

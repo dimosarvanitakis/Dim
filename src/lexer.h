@@ -14,20 +14,15 @@ struct tok_buffer {
 };
 
 struct lexer {
-	const char*  file;
-
-	buffer       buff;
-
-	arena*       mem;
-
-	location     curr_pos;
-
-	uint32_t     position;
-
-	tok_buffer   token_buffer;
+	const char*		file;
+	buffer			buff;
+	memory_arena*	arena;
+	location		curr_pos;
+	uint32_t		position;
+	tok_buffer		token_buffer;
 };
 
-lexer   lexer_create(arena* mem, const char* file);
+lexer   lexer_create(memory_arena* arena, const char* file);
 void    lexer_report_error(location* loc, const char* error, ...);
 
 token* lexer_get_current_token(lexer* lex);

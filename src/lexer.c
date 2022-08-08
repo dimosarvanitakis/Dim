@@ -93,10 +93,10 @@ static token* read_number(lexer* lex, int32_t pos) {
 		} */
 	}
 
-	return create_token_from_string(lex->mem,
+	return create_token_from_string(lex->arena,
 								    is_real ? REAL : INTEGER,
 								    lex->curr_pos,
-								    string_create_from(lex->mem, from, (int32_t) (until - from)));
+								    string_create_from(lex->arena, from, (int32_t) (until - from)));
 }
 
 static token* read_string(lexer* lex) {
@@ -143,15 +143,15 @@ static token* read_string(lexer* lex) {
 
 	string str = {0};
 	str.length = buff_pos;
-	str.data   = arena_allocate(lex->mem, str.length + 1);
+	str.data   = arena_allocate(lex->arena, str.length + 1);
 	memcpy(str.data, buffer, str.length);
 	str.data[str.length] = '\0';
 
-	return create_token_from_string(lex->mem, STRING, lex->curr_pos, str);
+	return create_token_from_string(lex->arena, STRING, lex->curr_pos, str);
 }
 
 static token* get_next_token(lexer* lex) {
-	arena* mem = lex->mem;
+	memory_arena* arena = lex->arena;
 
 	char input;
 	while ((input = get_next_char(lex)) != EOF) {
@@ -167,81 +167,81 @@ static token* get_next_token(lexer* lex) {
 
 			//Punctuations
 			case '{': {
-				return create_token(mem, OPEN_BRACE, curr_pos, "{");
+				return create_token(arena, OPEN_BRACE, curr_pos, "{");
 			} break;
 
 			case '}': {
-				return create_token(mem, CLOSE_BRACE, curr_pos, "}");
+				return create_token(arena, CLOSE_BRACE, curr_pos, "}");
 			} break;
 
 			case '[': {
-				return create_token(mem, OPEN_BRACKET, curr_pos, "]");
+				return create_token(arena, OPEN_BRACKET, curr_pos, "]");
 			} break;
 
 		    case ']': {
-				return create_token(mem, CLOSE_BRACKET, curr_pos, "[");
+				return create_token(arena, CLOSE_BRACKET, curr_pos, "[");
 			} break;
 
 			case '(': {
-				return create_token(mem, OPEN_PARENTHESIS, curr_pos, "(");
+				return create_token(arena, OPEN_PARENTHESIS, curr_pos, "(");
 			} break;
 
 			case ')': {
-				return create_token(mem, CLOSE_PARENTHESIS, curr_pos, ")");
+				return create_token(arena, CLOSE_PARENTHESIS, curr_pos, ")");
 			}break;
 
 			case ',': {
-				return create_token(mem, COMMA, curr_pos, ",");
+				return create_token(arena, COMMA, curr_pos, ",");
 			} break;
 
 			case ':': {
-				return create_token(mem, COLON, curr_pos, ":");
+				return create_token(arena, COLON, curr_pos, ":");
 			} break;
 
 			case ';': {
-				return create_token(mem, SEMICOLON, curr_pos, ";");
+				return create_token(arena, SEMICOLON, curr_pos, ";");
 			} break;
 
 			//Operators
 			case '=': {
 				input = get_next_char(lex);
 				if(input == '=')
-					return create_token(mem, EQUALS, curr_pos, "==");
+					return create_token(arena, EQUALS, curr_pos, "==");
 				else {
 					retract(lex, input);
-					return create_token(mem, ASSIGN, curr_pos, "=");
+					return create_token(arena, ASSIGN, curr_pos, "=");
 				}
 			} break;
 
 			case '+': {
 				input = get_next_char(lex);
 				if (input == '+')
-					return create_token(mem, INCREMENT, curr_pos, "++");
+					return create_token(arena, INCREMENT, curr_pos, "++");
 				else {
 					retract(lex, input);
-					return create_token(mem, PLUS, curr_pos, "+");
+					return create_token(arena, PLUS, curr_pos, "+");
 				}
 			} break;
 
 			case '-': {
 				input = get_next_char(lex);
 				if (input == '-')
-					return create_token(mem, DECREMENT, curr_pos, "--");
+					return create_token(arena, DECREMENT, curr_pos, "--");
 				else {
 					retract(lex, input);
-					return create_token(mem, MINUS, curr_pos, "-");
+					return create_token(arena, MINUS, curr_pos, "-");
 				}
 			}
 
-			case '*': return create_token(mem, MULTI, curr_pos, "*");
-			case '/': return create_token(mem, DIV, curr_pos, "/");
-			case '%': return create_token(mem, MOD, curr_pos , "%");
+			case '*': return create_token(arena, MULTI, curr_pos, "*");
+			case '/': return create_token(arena, DIV, curr_pos, "/");
+			case '%': return create_token(arena, MOD, curr_pos , "%");
 
 			// TODO: bitwise operators
 			case '&': {
 				input = get_next_char(lex);
 				if(input == '&')
-					return create_token(mem, AND, curr_pos, "&&");
+					return create_token(arena, AND, curr_pos, "&&");
 				else {
 					retract(lex, input);
 					lexer_report_error(&lex->curr_pos, "unknown character `%c` after &.", input);
@@ -251,7 +251,7 @@ static token* get_next_token(lexer* lex) {
 			case '|':{
 				input = get_next_char(lex);
 				if(input == '|')
-					return create_token(mem, OR, curr_pos, "||");
+					return create_token(arena, OR, curr_pos, "||");
 				else {
 					retract(lex, input);
 					lexer_report_error(&lex->curr_pos, "unknown character `%c` after |.", input);
@@ -261,30 +261,30 @@ static token* get_next_token(lexer* lex) {
 			case '!': {
 				input = get_next_char(lex);
 				if(input == '=')
-					return create_token(mem, NOT_EQUALS, curr_pos, "!=");
+					return create_token(arena, NOT_EQUALS, curr_pos, "!=");
 				else {
 					retract(lex, input);
-					return create_token(mem, NOT, curr_pos, "!");
+					return create_token(arena, NOT, curr_pos, "!");
 				}
 			} break;
 
 			case '>': {
 				input = get_next_char(lex);
 				if(input == '=')
-					return create_token(mem, GREATER_EQUAL, curr_pos, ">=");
+					return create_token(arena, GREATER_EQUAL, curr_pos, ">=");
 				else {
 					retract(lex, input);
-					return create_token(mem, GREATER, curr_pos, ">");
+					return create_token(arena, GREATER, curr_pos, ">");
 				}
 			} break;
 
 			case '<': {
 				input = get_next_char(lex);
 				if(input == '=')
-					return create_token(mem, LESS_EQUAL, curr_pos, "<");
+					return create_token(arena, LESS_EQUAL, curr_pos, "<");
 				else {
 					retract(lex, input);
-					return create_token(mem, LESS, curr_pos, "<=");
+					return create_token(arena, LESS, curr_pos, "<=");
 				}
 			} break;
 
@@ -322,18 +322,18 @@ static token* get_next_token(lexer* lex) {
 				retract(lex, input);
 				until++;
 
-				string key_or_id = string_create_from(lex->mem, from, (int32_t) (until - from));
+				string key_or_id = string_create_from(lex->arena, from, (int32_t) (until - from));
 				token_type type = is_keyword(&key_or_id);
 				if (type == NONE) {
 					type = ID;
 				}
 
-				return create_token(mem, type, curr_pos, (const char*) key_or_id.data);
+				return create_token(arena, type, curr_pos, (const char*) key_or_id.data);
 			} break;
 		}
 	}
 
-	return create_token(mem, EOFF, lex->curr_pos, "eof");
+	return create_token(arena, EOFF, lex->curr_pos, "eof");
 }
 
 static void refill_token_buffer(lexer* lex) {
@@ -364,7 +364,7 @@ static void lexer_load_file_to_buffer(lexer* lex) {
 	long size = ftell(file_to_lex);
 	fseek(file_to_lex, 0, SEEK_SET);
 
-	buff->data   = arena_allocate(lex->mem, sizeof(char) * size);
+	buff->data   = arena_allocate(lex->arena, sizeof(char) * size);
 	buff->length = size;
 
 	if (!fread(buff->data, size, 1, file_to_lex)) {
@@ -376,11 +376,11 @@ static void lexer_load_file_to_buffer(lexer* lex) {
 	fclose(file_to_lex);
 }
 
-lexer lexer_create(arena* mem, const char* file) {
+lexer lexer_create(memory_arena* arena, const char* file) {
 	lexer lex;
 
-	lex.file = file;
-	lex.mem  = mem;
+	lex.file  = file;
+	lex.arena = arena;
 
 	lex.curr_pos.line        = 1;
 	lex.curr_pos.column      = 0;
