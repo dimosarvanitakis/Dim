@@ -27,7 +27,7 @@ void region_free(memory_region* region) {
 }
 
 void region_tell_stats(memory_region* region) {
-    fprintf(stdout, "\t[memory_region] [Mem:%p] [Size:%u] [Capacity:%u] [Free:%.2f]\n",
+    fprintf(stdout, "\t[memory_region] [Mem:%p] [Size:%u] [Capacity:%u] [Free:%.2f%%]\n",
             region->buffer,
             region->size,
             region->capacity,
