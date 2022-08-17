@@ -56,7 +56,7 @@ static tokens_literal token_literals[TOKEN_TYPES_COUNT] = {
 	{"string"       ,   STRING             }
 };
 
-location create_location(uint32_t line, uint32_t column, const char *file) {
+location location_create(uint32_t line, uint32_t column, const char *file) {
 	location result;
 
 	result.line		   = line;
@@ -67,7 +67,7 @@ location create_location(uint32_t line, uint32_t column, const char *file) {
 	return result;
 }
 
-token* create_token(memory_arena* arena, token_type type, location loc, const char* value) {
+token* token_create(memory_arena* arena, token_type type, location loc, const char* value) {
 	token* result = arena_allocate(arena, sizeof(token));
 
 	result->type  = type;
@@ -77,7 +77,7 @@ token* create_token(memory_arena* arena, token_type type, location loc, const ch
 	return result;
 }
 
-token* create_token_from_string(memory_arena* arena, token_type type, location loc, string value) {
+token* token_create_from_string(memory_arena* arena, token_type type, location loc, string value) {
 	token* result = arena_allocate(arena, sizeof(token));
 
 	result->type = type;
@@ -87,6 +87,50 @@ token* create_token_from_string(memory_arena* arena, token_type type, location l
 	result->value.data   = value.data;
 
 	return result;
+}
+
+bool token_is_keyword(token* tok) {
+	 token_type type = tok->type;
+
+	return (type >= VAR &&
+			type <= NIL) || type == TYPE;
+}
+
+bool token_is_unary_operator(token* token) {
+	switch (token->type) {
+		case NOT:
+		case MINUS:
+		case INCREMENT:
+		case DECREMENT:
+			return true;
+		default:
+			return false;
+	}
+}
+
+bool token_is_binary_operator(token* token) {
+	switch (token->type) {
+		case OR:
+		case AND:
+		case EQUALS:
+		case NOT_EQUALS:
+		case GREATER:
+		case GREATER_EQUAL:
+		case LESS:
+		case LESS_EQUAL:
+		case PLUS:
+		case MINUS:
+		case MULTI:
+		case DIV:
+		case MOD:
+			return true;
+		default:
+			return false;
+	}
+}
+
+const char* token_get_type_to_string(token_type type) {
+	return token_literals[type].text;
 }
 
 token_type is_keyword(string* text) {
@@ -102,7 +146,6 @@ token_type is_keyword(string* text) {
 
 	return NONE;
 }
-
 
 bool is_primitive_type(string* text) {
 	const char* type = (const char*) text->data;
@@ -125,48 +168,4 @@ bool is_primitive_type(string* text) {
 	}
 
 	return false;
-}
-
-bool is_token_keyword(token* tok) {
-	 token_type type = tok->type;
-
-	return (type >= VAR &&
-			type <= NIL) || type == TYPE;
-}
-
-bool is_token_unary_operator(token* token) {
-	switch (token->type) {
-		case NOT:
-		case MINUS:
-		case INCREMENT:
-		case DECREMENT:
-			return true;
-		default:
-			return false;
-	}
-}
-
-bool is_token_binary_operator(token* token) {
-	switch (token->type) {
-		case OR:
-		case AND:
-		case EQUALS:
-		case NOT_EQUALS:
-		case GREATER:
-		case GREATER_EQUAL:
-		case LESS:
-		case LESS_EQUAL:
-		case PLUS:
-		case MINUS:
-		case MULTI:
-		case DIV:
-		case MOD:
-			return true;
-		default:
-			return false;
-	}
-}
-
-const char* get_token_type_to_string(token_type type) {
-	return token_literals[type].text;
 }
