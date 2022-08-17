@@ -1,12 +1,5 @@
 #include "llvm_generator.h"
 
-// 0 == Global Scope
-static int32_t scope = 0;
-
-// 0 == break/continue is out of a while/do loop and is
-// not allowed
-static int32_t bc_allowed = 0;
-
 //Dispatch table
 static llvm_generator_expr_function* const llvm_generator_epxr_functions_table[EXPR_TYPES_COUNT] = {
     emit_llvm_literal_expr,
@@ -44,20 +37,20 @@ static const char* binary_op_to_str_table[BINARY_OP_TYPES_COUNT] = {
     [MOD_BINARY_OP]           = "%"
 };
 
-static inline void enter_scope() {
-    scope++;
+static inline void enter_scope(llvm_generator* generator) {
+    generator->scope++;
 }
 
-static inline void exit_scope() {
-    scope--;
+static inline void exit_scope(llvm_generator* generator) {
+    generator->scope--;
 }
 
-static inline int32_t get_current_scope() {
-    return scope;
+static inline int32_t get_current_scope(llvm_generator* generator) {
+    return generator->scope;
 }
 
 static inline void enter_loop_body(llvm_generator* generator) {
-    bc_allowed++;
+    generator->bc_allowed++;
 
     // create a new patch "level"
     list* new_scope_break = list_create(generator->arena);
@@ -68,15 +61,15 @@ static inline void enter_loop_body(llvm_generator* generator) {
 }
 
 static inline void exit_loop_body(llvm_generator* generator) {
-    bc_allowed--;
+    generator->bc_allowed--;
 
     // we assume that the patch in the current loop already happened.
     list_pop_back(generator->break_list);
     list_pop_back(generator->continue_list);
 }
 
-static inline bool is_break_continue_allowed() {
-    return (bc_allowed > 0);
+static inline bool is_break_continue_allowed(llvm_generator* generator) {
+    return (generator->bc_allowed > 0);
 }
 
 static inline void push_bc_patch_info(llvm_generator* generator, list* to_be_patched, LLVMBasicBlockRef parent, LLVMValueRef instr) {
@@ -132,7 +125,7 @@ static void append_build_in_function(llvm_generator* generator,
     generator->build_in_functions[index].address  = func_address;
 
     llvm_symbol* func_symbol = (llvm_symbol*) arena_allocate(generator->arena, sizeof(llvm_symbol));
-    func_symbol->scope = get_current_scope();
+    func_symbol->scope = get_current_scope(generator);
     func_symbol->type  = func_type;
     func_symbol->value = func_value;
 
@@ -178,7 +171,9 @@ llvm_generator llvm_generator_create(const char* module_name) {
     generator.break_list    = list_create(generator.arena);
     generator.continue_list = list_create(generator.arena);
 
-    generator.errors  = 0;
+    generator.errors     = 0;
+    generator.scope      = 0;
+    generator.bc_allowed = 0;
 
     LLVMTypeRef types_to_llvm[VAR_TYPES_COUNT] = {
         LLVMInt8TypeInContext(generator.context),
@@ -795,7 +790,7 @@ LLVMValueRef emit_llvm_break_stmt(llvm_generator* generator, stmt* ast_node) {
 
     break_stmt* ast_break = &ast_node->as.brk;
 
-    if (!is_break_continue_allowed()) {
+    if (!is_break_continue_allowed(generator)) {
         return llvm_generator_report_error(generator,
                                     &ast_break->loc,
                                     "break statement is only allowed inside a loop body.");
@@ -818,7 +813,7 @@ LLVMValueRef emit_llvm_continue_stmt(llvm_generator* generator, stmt* ast_node) 
 
     continue_stmt* ast_cont = &ast_node->as.cont;
 
-    if (!is_break_continue_allowed()) {
+    if (!is_break_continue_allowed(generator)) {
         return llvm_generator_report_error(generator,
                                     &ast_cont->loc,
                                     "continue statement is only allowed inside a loop body.");
@@ -869,7 +864,7 @@ LLVMValueRef emit_llvm_block_stmt(llvm_generator* generator, stmt* ast_node) {
 
     assert(ast_block);
 
-    enter_scope();
+    enter_scope(generator);
     {
         for (list_it it = ast_block->stmts->front;
              it != NULL;
@@ -884,7 +879,7 @@ LLVMValueRef emit_llvm_block_stmt(llvm_generator* generator, stmt* ast_node) {
             last_stmt = llvm_generator_stmt_functions_table[ast_stmt->type](generator, ast_stmt);
         }
     }
-    exit_scope();
+    exit_scope(generator);
 
     return last_stmt;
 }
@@ -974,7 +969,7 @@ LLVMValueRef emit_llvm_var_definition_stmt(llvm_generator* generator, stmt* ast_
     const char* var_name = ast_var_def->name.data;
     location*   var_loc  = &ast_var_def->loc;
 
-    int32_t current_scope = get_current_scope();
+    int32_t current_scope = get_current_scope(generator);
     if (symbol_table_contains(generator->symbols, var_name, check_for_var_in_scope, (void*) &current_scope) == SYM_SUCCESS) {
         return llvm_generator_report_error(generator,
                                     var_loc,
@@ -1084,7 +1079,7 @@ LLVMValueRef emit_llvm_func_decl(llvm_generator* generator, func_decl* ast_func)
     LLVMBasicBlockRef body = LLVMAppendBasicBlockInContext(generator->context, function_value, "entry");
 
     llvm_symbol* func_symbol = (llvm_symbol*) arena_allocate(generator->arena, sizeof(llvm_symbol));
-    func_symbol->scope = get_current_scope();
+    func_symbol->scope = get_current_scope(generator);
     func_symbol->type  = function_type;
     func_symbol->value = function_value;
 
@@ -1097,7 +1092,7 @@ LLVMValueRef emit_llvm_func_decl(llvm_generator* generator, func_decl* ast_func)
 
     push_existing_block(generator, body);
     {
-        enter_scope();
+        enter_scope(generator);
         {
             LLVMPositionBuilderAtEnd(generator->ir_builder, body);
 
@@ -1129,7 +1124,7 @@ LLVMValueRef emit_llvm_func_decl(llvm_generator* generator, func_decl* ast_func)
                 params   = params->next;
             }
         }
-        exit_scope();
+        exit_scope(generator);
 
         stmt ast_block;
         ast_block.type = BLOCK_STMT;

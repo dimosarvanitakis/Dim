@@ -42,6 +42,13 @@ struct llvm_generator {
     // How many errors so far?
     int32_t errors;
 
+    // 0 == Global Scope
+    int32_t scope;
+
+    // 0 == break/continue is out of a while/do loop and is
+    // not allowed
+    int32_t bc_allowed;
+
     // llvm_generator phase has it own memory arena
     memory_arena* arena;
 
