@@ -21,18 +21,6 @@ string string_create(memory_arena* arena, const char* data) {
     return result;
 }
 
-string string_create_from(memory_arena* arena, const char* data, uint32_t length) {
-    string result = {0};
-
-    result.length = length;
-    result.data   = arena_allocate(arena, sizeof(char) * (length + 1));
-
-    memcpy(result.data, data, result.length + 1);
-    result.data[result.length] = '\0';
-
-    return result;
-}
-
 list* list_create(memory_arena* arena) {
     list* li = arena_allocate(arena, sizeof(list));
 

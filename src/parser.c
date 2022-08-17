@@ -84,7 +84,7 @@ static func_call_expr parse_func_call_expr(memory_arena *arena, lexer *lex) {
 
 	token* curr_token   = lexer_get_current_token(lex);
 	func_call.loc       = curr_token->loc;
-	func_call.name      = curr_token->value;
+	func_call.name      = curr_token->value.string_value;
 	func_call.arguments = list_create(arena);
 
 	lexer_expect_token(lex, ID);
@@ -127,7 +127,7 @@ static lvalue_expr parse_lvalue_expr(lexer* lex) {
 
 	lvalue_expr lvalue = {0};
 	lvalue.loc  = curr_token->loc;
-	lvalue.name = curr_token->value;
+	lvalue.name = curr_token->value.string_value;
 
 	return lvalue;
 }
@@ -161,12 +161,12 @@ static expr parse_primary_expr(memory_arena* arena, lexer* lex) {
 			int_lit.loc                    = curr_token->loc;
 			int_lit.type				   = LITERAL_EXPR;
 			int_lit.as.literal.type		   = INTEGER_LIT;
-			int_lit.as.literal.as.int_val  = strtol(curr_token->value.data, &temp, 10);
+			int_lit.as.literal.as.int_val  = curr_token->value.integer_value;
 
 			return int_lit;
 		} break;
 
-		case REAL: {
+		case DECIMAL: {
 
 			lexer_eat_token(lex);
 
@@ -175,7 +175,7 @@ static expr parse_primary_expr(memory_arena* arena, lexer* lex) {
 			real_lit.loc                     = curr_token->loc;
 			real_lit.type					 = LITERAL_EXPR;
 			real_lit.as.literal.type		 = DOUBLE_LIT;
-			real_lit.as.literal.as.int_val   = strtod(curr_token->value.data, &temp);
+			real_lit.as.literal.as.int_val   = curr_token->value.decimal_value;
 
 			return real_lit;
 		} break;
@@ -211,7 +211,7 @@ static expr parse_primary_expr(memory_arena* arena, lexer* lex) {
 			string_lit.loc                       = curr_token->loc;
 			string_lit.type					     = LITERAL_EXPR;
 			string_lit.as.literal.type		     = STRING_LIT;
-			string_lit.as.literal.as.string_val  = curr_token->value.data;
+			string_lit.as.literal.as.string_val  = curr_token->value.string_value.data;
 
 			return string_lit;
 		} break;
@@ -270,7 +270,7 @@ static expr parse_expr_with_precedence(memory_arena* arena, lexer* lex, int32_t 
 	expr lhs = parse_expr_with_precedence(arena, lex, precedence + 10);
 
 	token* curr_token = lexer_get_current_token(lex);
-	while ( (is_token_binary_operator(curr_token)) &&
+	while ( (token_is_binary_operator(curr_token)) &&
 		    (get_binary_op_precedence(curr_token) == precedence)) {
 
 		lexer_eat_token(lex);
@@ -460,8 +460,8 @@ var_assign parse_var_assign(memory_arena* arena, lexer* lex) {
 	var_assign var = {0};
 
 	token* curr_token = lexer_expect_token(lex, ID);
-	var.loc = curr_token->loc;
-	var.name= curr_token->value;
+	var.loc  = curr_token->loc;
+	var.name = curr_token->value.string_value;
 
 	lexer_expect_token(lex, ASSIGN);
 
@@ -600,14 +600,14 @@ static var_def parse_var_common(lexer* lex) {
 
 	token* var_token = lexer_expect_token(lex, ID);
 	var_common.loc  = var_token->loc;
-	var_common.name = var_token->value;
+	var_common.name = var_token->value.string_value;
 
 	// (TODO): check for variable redefinition.
 
 	lexer_expect_token(lex, COLON);
 
 	var_token = lexer_expect_token(lex, TYPE);
-	var_common.type = convert_string_to_var_type(&var_token->value);
+	var_common.type = convert_string_to_var_type(&var_token->value.string_value);
 
 	return var_common;
 }
@@ -666,13 +666,13 @@ static func_param parse_func_param(lexer* lex) {
 	func_param param = {0};
 
 	token* curr_token = lexer_expect_token(lex, ID);
-	param.loc = curr_token->loc;
-	param.name= curr_token->value;
+	param.loc  = curr_token->loc;
+	param.name = curr_token->value.string_value;
 
 	lexer_expect_token(lex, COLON);
 	curr_token = lexer_expect_token(lex, TYPE);
 
-	param.type = convert_string_to_var_type(&curr_token->value);
+	param.type = convert_string_to_var_type(&curr_token->value.string_value);
 
 	return param;
 }
@@ -688,7 +688,7 @@ func_decl parse_func_decl(memory_arena* arena, lexer* lex) {
 
 	token* func_token = lexer_expect_token(lex, ID);
 	func.loc        = func_token->loc;
-	func.name       = func_token->value;
+	func.name       = func_token->value.string_value;
 	func.parameters = list_create(arena);
 
 	lexer_expect_token(lex, OPEN_PARENTHESIS);
@@ -726,7 +726,7 @@ func_decl parse_func_decl(memory_arena* arena, lexer* lex) {
 		lexer_expect_token(lex, COLON);
 
 		func_token        = lexer_expect_token(lex, TYPE);
-		func.return_type  = convert_string_to_var_type(&func_token->value);
+		func.return_type  = convert_string_to_var_type(&func_token->value.string_value);
 	}
 
 	func.body = parse_block_stmt(arena, lex);
@@ -770,7 +770,7 @@ module parse_module(memory_arena* arena, lexer* lex) {
 			default : {
 				lexer_report_error(&curr_token->loc,
 								   "expected top level variable or function defition/declaration and got `%s`.",
-                                   curr_token->value.data);
+                                   curr_token->value.string_value.data);
 			} break;
 		}
 	}

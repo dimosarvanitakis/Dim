@@ -1,6 +1,9 @@
 var dimos: i8 = 10;
 var nikos: i32 = 90;
 
+var el: f64  = 13.45;
+var nik: i64 = 0xabcde;
+
 var tassos: i64 = dimos + nikos + 29823;
 
 fn dl(x1:i8): i8 {

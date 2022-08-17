@@ -4,6 +4,18 @@
 #include <ctype.h>
 #include <stdio.h>
 
+static inline bool is_decimeal (char c) {
+	return (c == '.');
+}
+
+static inline bool is_hex(char c) {
+	return (c == 'x');
+}
+
+static inline char get_current_char(lexer* lex) {
+	return (char) lex->buff.data[lex->position - 1];
+}
+
 static char get_next_char(lexer* lex) {
 	buffer*   buff     = &lex->buff;
 	location* curr_pos = &lex->curr_pos;
@@ -51,52 +63,78 @@ static void read_comment(lexer* lex) {
 	}
 }
 
-static token* read_number(lexer* lex, int32_t pos) {
-	char*	from      = &lex->buff.data[pos];
-	char*	until     = from;
-	char	prev_char = *from;
+static inline token* read_hex_number(lexer* lex) {
+	char hex_number[128]   = {};
+	int32_t hex_number_pos = 0;
+	char* temp             = NULL;
 
-	bool	is_real   = false;
-	char	c		  = get_next_char(lex);
-
-	if (isdigit(c) && prev_char == '0') {
-		lexer_report_error(&lex->curr_pos, "numbers cannot start with 0[0-9].");
+	char c = get_next_char(lex);
+	while((c >= '0' && c <= '9') ||
+		  (c >= 'a' && c <= 'f') ||
+		  (c >= 'A' && c <= 'F'))
+	{
+		hex_number[hex_number_pos++] = c;
+		c = get_next_char(lex);
 	}
-
-	while (true) {
-
-		if (c == '.') {
-			if (is_real) break;
-			is_real = true;
-		} else if (!isdigit(c)) {
-			break;
-		}
-
-		prev_char = c;
-		c        = get_next_char(lex);
-
-		until++;
-	}
-
 	retract(lex, c);
-	until++;
 
-	if (prev_char == '.') {
-		is_real = false;
-		retract(lex, prev_char);
+	return token_create_integer(lex->arena,
+								lex->curr_pos,
+								strtoll(hex_number, &temp, 16));
+}
 
-		/* for (char* it = from; it != until; ++it) {
-			if (*it != '.') {
-				number.data[number.length] = *it;
-				number.length++;
-			}
-		} */
+static token* read_number(lexer* lex) {
+	char*   temp        = NULL;
+	char    number[128] = {};
+	int32_t number_pos  = 0;
+	char c              = get_current_char(lex);
+
+	//if (isdigit(c) && prev_char == '0') {
+	//	lexer_report_error(&lex->curr_pos, "numbers cannot start with 0[0-9].");
+	//}
+	number[number_pos++] = c;
+	if (c == '0') {
+		c = get_next_char(lex);
+		if (is_hex(c)) {
+			return read_hex_number(lex);
+		} else {
+			retract(lex, c);
+		}
 	}
 
-	return create_token_from_string(lex->arena,
-								    is_real ? REAL : INTEGER,
-								    lex->curr_pos,
-								    string_create_from(lex->arena, from, (int32_t) (until - from)));
+	// read until the end of the number
+	c = get_next_char(lex);
+	while (isdigit(c)) {
+		number[number_pos++] = c;
+		c = get_next_char(lex);
+	}
+
+	if (is_decimeal(c)) {
+		number[number_pos++] = c;
+		c = get_next_char(lex);
+		if (isdigit(c)) {
+			number[number_pos++] = c;
+
+			c = get_next_char(lex);
+			while(isdigit(c)) {
+				number[number_pos++] = c;
+				c = get_next_char(lex);
+			}
+
+			retract(lex, c);
+
+			return token_create_decimal(lex->arena,
+										lex->curr_pos,
+										strtod(number, &temp));
+		} else {
+			lexer_report_error(&lex->curr_pos, "unfinished decimal number.\n");
+		}
+	}
+	retract(lex, c);
+
+	return token_create_integer(lex->arena,
+								lex->curr_pos,
+								strtoll(number, &temp, 10));
 }
 
 static token* read_string(lexer* lex) {
@@ -147,7 +185,7 @@ static token* read_string(lexer* lex) {
 	memcpy(str.data, buffer, str.length);
 	str.data[str.length] = '\0';
 
-	return create_token_from_string(lex->arena, STRING, lex->curr_pos, str);
+	return token_create_from_string(lex->arena, STRING, lex->curr_pos, str);
 }
 
 static token* get_next_token(lexer* lex) {
@@ -167,81 +205,81 @@ static token* get_next_token(lexer* lex) {
 
 			//Punctuations
 			case '{': {
-				return create_token(arena, OPEN_BRACE, curr_pos, "{");
+				return token_create(arena, OPEN_BRACE, curr_pos, "{");
 			} break;
 
 			case '}': {
-				return create_token(arena, CLOSE_BRACE, curr_pos, "}");
+				return token_create(arena, CLOSE_BRACE, curr_pos, "}");
 			} break;
 
 			case '[': {
-				return create_token(arena, OPEN_BRACKET, curr_pos, "]");
+				return token_create(arena, OPEN_BRACKET, curr_pos, "]");
 			} break;
 
 		    case ']': {
-				return create_token(arena, CLOSE_BRACKET, curr_pos, "[");
+				return token_create(arena, CLOSE_BRACKET, curr_pos, "[");
 			} break;
 
 			case '(': {
-				return create_token(arena, OPEN_PARENTHESIS, curr_pos, "(");
+				return token_create(arena, OPEN_PARENTHESIS, curr_pos, "(");
 			} break;
 
 			case ')': {
-				return create_token(arena, CLOSE_PARENTHESIS, curr_pos, ")");
+				return token_create(arena, CLOSE_PARENTHESIS, curr_pos, ")");
 			}break;
 
 			case ',': {
-				return create_token(arena, COMMA, curr_pos, ",");
+				return token_create(arena, COMMA, curr_pos, ",");
 			} break;
 
 			case ':': {
-				return create_token(arena, COLON, curr_pos, ":");
+				return token_create(arena, COLON, curr_pos, ":");
 			} break;
 
 			case ';': {
-				return create_token(arena, SEMICOLON, curr_pos, ";");
+				return token_create(arena, SEMICOLON, curr_pos, ";");
 			} break;
 
 			//Operators
 			case '=': {
 				input = get_next_char(lex);
 				if(input == '=')
-					return create_token(arena, EQUALS, curr_pos, "==");
+					return token_create(arena, EQUALS, curr_pos, "==");
 				else {
 					retract(lex, input);
-					return create_token(arena, ASSIGN, curr_pos, "=");
+					return token_create(arena, ASSIGN, curr_pos, "=");
 				}
 			} break;
 
 			case '+': {
 				input = get_next_char(lex);
 				if (input == '+')
-					return create_token(arena, INCREMENT, curr_pos, "++");
+					return token_create(arena, INCREMENT, curr_pos, "++");
 				else {
 					retract(lex, input);
-					return create_token(arena, PLUS, curr_pos, "+");
+					return token_create(arena, PLUS, curr_pos, "+");
 				}
 			} break;
 
 			case '-': {
 				input = get_next_char(lex);
 				if (input == '-')
-					return create_token(arena, DECREMENT, curr_pos, "--");
+					return token_create(arena, DECREMENT, curr_pos, "--");
 				else {
 					retract(lex, input);
-					return create_token(arena, MINUS, curr_pos, "-");
+					return token_create(arena, MINUS, curr_pos, "-");
 				}
 			}
 
-			case '*': return create_token(arena, MULTI, curr_pos, "*");
-			case '/': return create_token(arena, DIV, curr_pos, "/");
-			case '%': return create_token(arena, MOD, curr_pos , "%");
+			case '*': return token_create(arena, MULTI, curr_pos, "*");
+			case '/': return token_create(arena, DIV, curr_pos, "/");
+			case '%': return token_create(arena, MOD, curr_pos , "%");
 
 			// TODO: bitwise operators
 			case '&': {
 				input = get_next_char(lex);
 				if(input == '&')
-					return create_token(arena, AND, curr_pos, "&&");
+					return token_create(arena, AND, curr_pos, "&&");
 				else {
 					retract(lex, input);
 					lexer_report_error(&lex->curr_pos, "unknown character `%c` after &.", input);
@@ -251,7 +289,7 @@ static token* get_next_token(lexer* lex) {
 			case '|':{
 				input = get_next_char(lex);
 				if(input == '|')
-					return create_token(arena, OR, curr_pos, "||");
+					return token_create(arena, OR, curr_pos, "||");
 				else {
 					retract(lex, input);
 					lexer_report_error(&lex->curr_pos, "unknown character `%c` after |.", input);
@@ -261,30 +299,30 @@ static token* get_next_token(lexer* lex) {
 			case '!': {
 				input = get_next_char(lex);
 				if(input == '=')
-					return create_token(arena, NOT_EQUALS, curr_pos, "!=");
+					return token_create(arena, NOT_EQUALS, curr_pos, "!=");
 				else {
 					retract(lex, input);
-					return create_token(arena, NOT, curr_pos, "!");
+					return token_create(arena, NOT, curr_pos, "!");
 				}
 			} break;
 
 			case '>': {
 				input = get_next_char(lex);
 				if(input == '=')
-					return create_token(arena, GREATER_EQUAL, curr_pos, ">=");
+					return token_create(arena, GREATER_EQUAL, curr_pos, ">=");
 				else {
 					retract(lex, input);
-					return create_token(arena, GREATER, curr_pos, ">");
+					return token_create(arena, GREATER, curr_pos, ">");
 				}
 			} break;
 
 			case '<': {
 				input = get_next_char(lex);
 				if(input == '=')
-					return create_token(arena, LESS_EQUAL, curr_pos, "<");
+					return token_create(arena, LESS_EQUAL, curr_pos, "<");
 				else {
 					retract(lex, input);
-					return create_token(arena, LESS, curr_pos, "<=");
+					return token_create(arena, LESS, curr_pos, "<=");
 				}
 			} break;
 
@@ -301,10 +339,11 @@ static token* get_next_token(lexer* lex) {
 
 			// IDs, number etc.
 			default: {
-				int32_t a_pos = lex->position - 1;
+				char name[256]   = {};
+				int32_t name_pos = 0;
 
 				if (isdigit(input)) {
-					return read_number(lex, a_pos);
+					return read_number(lex);
 				}
 
 				if (!isalpha(input)) {
@@ -312,28 +351,25 @@ static token* get_next_token(lexer* lex) {
 				}
 
 				//Id or Keyword
-				char* from  = &lex->buff.data[a_pos];
-				char* until = from;
+				name[name_pos++] = input;
 				while (isalnum(input = get_next_char(lex))) {
-					until++;
+					name[name_pos++] = input;
 				}
-
 				// Retract the last character that we read
 				retract(lex, input);
-				until++;
 
-				string key_or_id = string_create_from(lex->arena, from, (int32_t) (until - from));
-				token_type type = is_keyword(&key_or_id);
+				string key_or_id = string_create(lex->arena, name);
+				token_type type  = is_keyword(&key_or_id);
 				if (type == NONE) {
 					type = ID;
 				}
 
-				return create_token(arena, type, curr_pos, (const char*) key_or_id.data);
+				return token_create(arena, type, curr_pos, (const char*) key_or_id.data);
 			} break;
 		}
 	}
 
-	return create_token(arena, EOFF, lex->curr_pos, "eof");
+	return token_create(arena, EOFF, lex->curr_pos, "eof");
 }
 
 static void refill_token_buffer(lexer* lex) {
@@ -425,11 +461,19 @@ token* lexer_get_current_token(lexer* lex) {
 
 // (FIXME): remove me
 static void print_token_buffer(lexer* lex) {
-	for (int32_t it = 0; it < MAX_TOKEN_BUFFER; it++) {
-		fprintf(stdout, "\t[%d] token_buffer[%d]= %s\n",
+	for(int32_t it = 0; it < MAX_TOKEN_BUFFER; it++) {
+		token*    token = lex->token_buffer.tokens[it];
+		fprintf(stdout, "\t[%d] token_buffer[%d]= %s ",
 				lex->token_buffer.pos,
 				it,
-				get_token_type_to_string(lex->token_buffer.tokens[it]->type));
+				token_get_type_to_string(token->type));
+		if (token->type == INTEGER) {
+			fprintf(stdout, "[%ld]\n", token->value.integer_value);
+		} else if (token->type == DECIMAL) {
+			fprintf(stdout, "[%f]\n", token->value.decimal_value);
+		} else {
+			fprintf(stdout, "[%s]\n", token->value.string_value.data);
+		}
 	}
 }
 
@@ -437,7 +481,7 @@ static void print_token_buffer(lexer* lex) {
 token* lexer_eat_token(lexer* lex) {
 	token* curr_token = lexer_get_current_token(lex);
 
-	//print_token_buffer(lex);
+	print_token_buffer(lex);
 
 	refill_token_buffer(lex);
 
@@ -453,15 +497,15 @@ token* lexer_expect_token(lexer* lex, token_type expected_token) {
 	if (curr_token->type == EOFF) {
 		lexer_report_error(&curr_token->loc,
 						   "expected token %s and got EOF.\n",
-						   get_token_type_to_string(curr_token->type));
+						   token_get_type_to_string(curr_token->type));
 	}
 
 	if (expected_token != curr_token->type) {
 		lexer_report_error(&curr_token->loc,
 						   "expected token %s and got `%s`.\n",
-						   get_token_type_to_string(expected_token),
-						   curr_token->value.data,
-                           get_token_type_to_string(curr_token->type));
+						   token_get_type_to_string(expected_token),
+						   curr_token->value.string_value.data,
+                           token_get_type_to_string(curr_token->type));
 	}
 
 	return curr_token;

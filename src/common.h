@@ -33,7 +33,6 @@ struct buffer {
 
 int32_t get_string_literal_length(const char* string);
 string  string_create(memory_arena* arena, const char* data);
-string  string_create_from(memory_arena* arena, const char* data, uint32_t length);
 
 list*    list_create(memory_arena* arena);
 bool     list_is_empty(list* li);

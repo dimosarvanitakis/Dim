@@ -61,7 +61,7 @@ typedef enum token_type {
 	ID,
 	TYPE,
 	INTEGER,
-	REAL,
+	DECIMAL,
 	STRING,
 
 	//Count
@@ -78,12 +78,18 @@ struct location {
 struct token {
 	token_type 	type;
 	location    loc;
-	string      value;
+	union {
+		int64_t integer_value;
+		double  decimal_value;
+		string  string_value;
+	} value;
 };
 
 location    location_create(uint32_t line, uint32_t column, const char* file);
 
 token*      token_create(memory_arena* arena, token_type type, location loc, const char* value);
+token*      token_create_integer(memory_arena* arena, location loc, int64_t value);
+token*      token_create_decimal(memory_arena* arena, location loc, double value);
 token*      token_create_from_string(memory_arena* arena, token_type type, location loc, string value);
 
 bool        token_is_keyword(token* token);

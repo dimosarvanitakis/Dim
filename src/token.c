@@ -52,7 +52,7 @@ static tokens_literal token_literals[TOKEN_TYPES_COUNT] = {
 	{"id"           ,   ID                 },
 	{"type"         ,   TYPE               },
 	{"integer"      ,   INTEGER            },
-	{"real"         ,   REAL               },
+	{"decimal"      ,   DECIMAL            },
 	{"string"       ,   STRING             }
 };
 
@@ -72,7 +72,27 @@ token* token_create(memory_arena* arena, token_type type, location loc, const ch
 
 	result->type  = type;
 	result->loc   = loc;
-	result->value = string_create(arena, value);
+	result->value.string_value = string_create(arena, value);
+
+	return result;
+}
+
+token* token_create_integer(memory_arena* arena, location loc, int64_t value) {
+	token* result = arena_allocate(arena, sizeof(token));
+
+	result->type  = INTEGER;
+	result->loc   = loc;
+	result->value.integer_value = value;
+
+	return result;
+}
+
+token* token_create_decimal(memory_arena* arena, location loc, double value) {
+	token* result = arena_allocate(arena, sizeof(token));
+
+	result->type  = DECIMAL;
+	result->loc   = loc;
+	result->value.decimal_value = value;
 
 	return result;
 }
@@ -83,8 +103,8 @@ token* token_create_from_string(memory_arena* arena, token_type type, location l
 	result->type = type;
 	result->loc	 = loc;
 
-	result->value.length = value.length;
-	result->value.data   = value.data;
+	result->value.string_value.length = value.length;
+	result->value.string_value.data   = value.data;
 
 	return result;
 }
